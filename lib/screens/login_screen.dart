@@ -444,7 +444,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   icon: Icon(
                                     _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                                     size: 20,
-                                    color: Colors.slate.shade600,
+                                    color: Colors.blueGrey.shade600,
                                   ),
                                   tooltip: _obscurePassword ? 'Ver contraseña' : 'Ocultar contraseña',
                                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
