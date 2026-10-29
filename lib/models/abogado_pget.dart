@@ -80,12 +80,4 @@ class AbogadoPGET {
       activo: map['activo'] ?? true,
     );
   }
-      cedula: map['cedula'] ?? '',
-      cargo: map['cargo'] ?? 'Abogado Adscrito',
-      adscrito: map['adscrito'] ?? 'PGET',
-      telefono: map['telefono'] ?? '',
-      correo: map['correo'] ?? '',
-      activo: map['activo'] ?? true,
-    );
-  }
 }
