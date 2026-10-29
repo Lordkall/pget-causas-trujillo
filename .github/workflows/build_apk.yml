@@ -33,7 +33,10 @@ jobs:
         run: |
           if [ ! -f "android/build.gradle" ]; then
             echo "Inicializando plataforma Android para compilación..."
-            flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo --overwrite
+            flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo
+            # Restaurar obligatoriamente nuestro código fuente PGET y configuración
+            git checkout HEAD -- lib/ pubspec.yaml
+            git clean -fd lib/
           fi
           # Actualizar Kotlin a 1.9.24 para compatibilidad total con dependencias
           if [ -f "android/settings.gradle" ]; then
@@ -50,6 +53,9 @@ jobs:
           # Configurar Iconos Oficiales PGET para el APK y la App Android
           python3 -m pip install pillow
           python3 scripts/setup_android_icons.py
+
+          echo "=== Verificación de App Oficial PGET ==="
+          grep "PgetDataAbogadosApp" lib/main.dart
 
       - name: Install Dependencies
         run: |
