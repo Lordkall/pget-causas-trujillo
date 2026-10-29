@@ -516,55 +516,6 @@ class _AbogadosAdminScreenState extends State<AbogadosAdminScreen> {
                                   ),
                                 ],
                               ),
-
-                              // Fila 3: Botones de Contacto Rápido
-                              if (abg.telefono.isNotEmpty || abg.correo.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (abg.telefono.isNotEmpty) ...[
-                                      InkWell(
-                                        onTap: () => _launchUrl('tel:${abg.telefono}'),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.vinotintoTint,
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(color: AppTheme.oroBordeSuave),
-                                          ),
-                                          child: const Row(
-                                            children: [
-                                              Icon(Icons.phone, size: 12, color: AppTheme.vinotinto),
-                                              SizedBox(width: 4),
-                                              Text('Llamar', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.vinotinto)),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      InkWell(
-                                        onTap: () => _launchUrl('https://wa.me/${abg.telefono.replaceAll(RegExp(r'[^0-9]'), '')}'),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF25D366).withOpacity(0.12),
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(color: const Color(0xFF25D366).withOpacity(0.4)),
-                                          ),
-                                          child: const Row(
-                                            children: [
-                                              Icon(Icons.chat_bubble_outline, size: 12, color: Color(0xFF1E7E34)),
-                                              SizedBox(width: 4),
-                                              Text('WhatsApp', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF1E7E34))),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
                             ],
                           ),
                         ),

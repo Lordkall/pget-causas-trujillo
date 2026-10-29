@@ -116,23 +116,29 @@ class AuditoriaScreen extends StatelessWidget {
                             children: [
                               // Cabecera: Acción + Fecha/Hora
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Icon(_getIcon(item.accion), size: 16, color: color),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        item.accion,
-                                        style: TextStyle(
-                                          color: color,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.4,
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Icon(_getIcon(item.accion), size: 16, color: color),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            item.accion,
+                                            style: TextStyle(
+                                              color: color,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.4,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Text(
                                     item.fechaFormateada,
                                     style: const TextStyle(
@@ -145,32 +151,48 @@ class AuditoriaScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 8),
 
-                              // Quién lo realizó
+                              // Quién lo realizó (envuelto para nombres y cargos largos)
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.person_pin, size: 15, color: AppTheme.vinotinto),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Realizado por: ',
-                                    style: const TextStyle(fontSize: 12, color: AppTheme.textoSecundario),
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Icon(Icons.person_pin, size: 15, color: AppTheme.vinotinto),
                                   ),
-                                  Text(
-                                    item.usuario,
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.vinotinto),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: const TextStyle(fontSize: 12, color: AppTheme.textoSecundario),
+                                        children: [
+                                          const TextSpan(text: 'Realizado por: '),
+                                          TextSpan(
+                                            text: item.usuario,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.vinotinto),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
 
                               // Expediente y Materia
                               if (item.expediente.isNotEmpty)
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.folder_shared_outlined, size: 15, color: AppTheme.oroDark),
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 2),
+                                      child: Icon(Icons.folder_shared_outlined, size: 15, color: AppTheme.oroDark),
+                                    ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      'Exp: ${item.expediente}  •  ${item.pestana}',
-                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
+                                    Expanded(
+                                      child: Text(
+                                        'Exp: ${item.expediente}  •  ${item.pestana}',
+                                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
+                                      ),
                                     ),
                                   ],
                                 ),

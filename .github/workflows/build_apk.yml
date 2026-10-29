@@ -31,9 +31,9 @@ jobs:
 
       - name: Generate Android Skeleton if needed
         run: |
-          if [ ! -d "android" ]; then
+          if [ ! -f "android/build.gradle" ]; then
             echo "Inicializando plataforma Android para compilación..."
-            flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo
+            flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo --overwrite
           fi
           # Actualizar Kotlin a 1.9.24 para compatibilidad total con dependencias
           if [ -f "android/settings.gradle" ]; then
@@ -47,8 +47,14 @@ jobs:
             echo '{"installed":{"client_id":"dummy"}}' > assets/credentials.json
           fi
 
+          # Configurar Iconos Oficiales PGET para el APK y la App Android
+          python3 -m pip install pillow
+          python3 scripts/setup_android_icons.py
+
       - name: Install Dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons || true
 
       - name: Build Android Release APK
         run: flutter build apk --release --no-tree-shake-icons
