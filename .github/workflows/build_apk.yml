@@ -33,7 +33,7 @@ jobs:
         run: |
           if [ ! -d "android" ]; then
             echo "Inicializando plataforma Android para compilación..."
-            flutter create . --platforms=android --org com.pget.trujillo
+            flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo
           fi
           mkdir -p assets
           if [ ! -f "assets/credentials.json" ]; then
@@ -44,7 +44,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Android Release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK as Release Artifact
         uses: actions/upload-artifact@v4
