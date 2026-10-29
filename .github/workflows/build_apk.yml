@@ -35,6 +35,13 @@ jobs:
             echo "Inicializando plataforma Android para compilación..."
             flutter create . --project-name data_abogados --platforms=android --org com.pget.trujillo
           fi
+          # Actualizar Kotlin a 1.9.24 para compatibilidad total con dependencias
+          if [ -f "android/settings.gradle" ]; then
+            sed -i 's/"org.jetbrains.kotlin.android" version "[^"]*"/"org.jetbrains.kotlin.android" version "1.9.24"/g' android/settings.gradle
+          fi
+          if [ -f "android/build.gradle" ]; then
+            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' android/build.gradle
+          fi
           mkdir -p assets
           if [ ! -f "assets/credentials.json" ]; then
             echo '{"installed":{"client_id":"dummy"}}' > assets/credentials.json
