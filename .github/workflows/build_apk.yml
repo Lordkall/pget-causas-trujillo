@@ -1,0 +1,55 @@
+name: Build Android APK Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Export APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Generate Android Skeleton if needed
+        run: |
+          if [ ! -d "android" ]; then
+            echo "Inicializando plataforma Android para compilación..."
+            flutter create . --platforms=android --org com.pget.trujillo
+          fi
+          mkdir -p assets
+          if [ ! -f "assets/credentials.json" ]; then
+            echo '{"installed":{"client_id":"dummy"}}' > assets/credentials.json
+          fi
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        run: flutter build apk --release
+
+      - name: Upload APK as Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PGET-Causas-Juridicas-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+

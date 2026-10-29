@@ -1,0 +1,31 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+__pycache__/
+.DS_Store
+Thumbs.db
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.pub-cache/
+.pub/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Node / Scratch
+node_modules/
+check_lines.py
+
+# Secrets & Scratch
+credentials.json
+assets/credentials.json
+create_and_push_repo.py
+
