@@ -236,23 +236,7 @@ class AbogadosProvider with ChangeNotifier {
     return ['TODOS', ...sorted];
   }
 
-  String? _extractYearFromRow(List<dynamic> row) {
-    final fecIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('FECHA'));
-    if (fecIdx != -1 && fecIdx < row.length) {
-      final y = _cleanYear(row[fecIdx]);
-      if (y != null) return y;
-    }
-    final expIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('EXPEDIENTE') || c.toUpperCase().contains('INVESTIGACION'));
-    if (expIdx != -1 && expIdx < row.length) {
-      final y = _cleanYear(row[expIdx]);
-      if (y != null) return y;
-    }
-    for (int c = 0; c < (row.length < 8 ? row.length : 8); c++) {
-      final y = _cleanYear(row[c]);
-      if (y != null) return y;
-    }
-    return null;
-  }
+
 
   int _getEstadoColumnIndex() {
     return _currentTab.columns.indexWhere((c) {

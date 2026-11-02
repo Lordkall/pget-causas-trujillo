@@ -212,6 +212,8 @@ class MainActivity: FlutterFragmentActivity()
         # compileSdk 35 y buildToolsVersion 35.0.0 y ndkVersion 26.1.10909125
         g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 35\n    buildToolsVersion = "35.0.0"\n    ndkVersion = "26.1.10909125"', g_content)
         g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 35\n    buildToolsVersion "35.0.0"\n    ndkVersion = "26.1.10909125"', g_content)
+        g_content = re.sub(r'ndkVersion\s*=\s*.*', 'ndkVersion = "26.1.10909125"', g_content)
+        g_content = re.sub(r'ndkVersion\s+.*', 'ndkVersion "26.1.10909125"', g_content)
         g_content = re.sub(r'targetSdk\s*=\s*.*', 'targetSdk = 35', g_content)
         g_content = re.sub(r'targetSdkVersion\s+.*', 'targetSdkVersion 35', g_content)
 

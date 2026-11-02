@@ -365,8 +365,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     // Iniciar carga de datos de causas jurídicas y sincronizar con animación de 1.5s
     final provider = context.read<AbogadosProvider>();
-    await Future.wait([
-      provider.cargarCausasGoogleSheets(forzar: false),
+    await Future.wait<dynamic>([
+      provider.cargarFilasPestana(),
       Future.delayed(const Duration(milliseconds: 1500)),
     ]);
 
