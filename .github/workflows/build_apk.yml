@@ -38,19 +38,12 @@ jobs:
             git checkout HEAD -- lib/ pubspec.yaml
             git clean -fd lib/
           fi
-          # Actualizar Kotlin a 1.9.24 para compatibilidad total con dependencias
-          if [ -f "android/settings.gradle" ]; then
-            sed -i 's/"org.jetbrains.kotlin.android" version "[^"]*"/"org.jetbrains.kotlin.android" version "1.9.24"/g' android/settings.gradle
-          fi
-          if [ -f "android/build.gradle" ]; then
-            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' android/build.gradle
-          fi
           mkdir -p assets
           if [ ! -f "assets/credentials.json" ]; then
             echo '{"installed":{"client_id":"dummy"}}' > assets/credentials.json
           fi
 
-          # Configurar Iconos Oficiales PGET para el APK y la App Android
+          # Configurar Iconos Oficiales PGET y Gradle SDK 35 para el APK
           python3 -m pip install pillow
           python3 scripts/setup_android_icons.py
 

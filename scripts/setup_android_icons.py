@@ -111,7 +111,7 @@ def generate_icons():
         else:
             content = re.sub(r'android:roundIcon="[^"]*"', 'android:roundIcon="@mipmap/ic_launcher_round"', content)
 
-        # Asegurar permisos de Internet, red y biometría en AndroidManifest.xml
+        # Permisos requeridos
         permissions = '''
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -148,7 +148,59 @@ class MainActivity: FlutterFragmentActivity()
                         f.write(content)
                     print(f"Updated {act_path} with FlutterFragmentActivity")
 
-    # 8. Habilitar multidex y configurar compileSdkVersion 34 en android/app/build.gradle
+    # 8. Actualizar Gradle Wrapper a 8.7 (totalmente compatible con AGP 8.5.0 y Android 35)
+    wrapper_props = 'android/gradle/wrapper/gradle-wrapper.properties'
+    if os.path.exists(wrapper_props):
+        with open(wrapper_props, 'r', encoding='utf-8') as f:
+            w_content = f.read()
+        w_content = re.sub(r'distributionUrl=.*', r'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-all.zip', w_content)
+        with open(wrapper_props, 'w', encoding='utf-8') as f:
+            f.write(w_content)
+        print("Updated gradle-wrapper.properties to gradle-8.7-all.zip")
+
+    # 9. Actualizar android/settings.gradle: AGP 8.5.0 y Kotlin 1.9.24
+    settings_gradle = 'android/settings.gradle'
+    if os.path.exists(settings_gradle):
+        with open(settings_gradle, 'r', encoding='utf-8') as f:
+            s_content = f.read()
+        s_content = re.sub(r'id "com\.android\.application" version "[^"]*"', 'id "com.android.application" version "8.5.0"', s_content)
+        s_content = re.sub(r'id "org\.jetbrains\.kotlin\.android" version "[^"]*"', 'id "org.jetbrains.kotlin.android" version "1.9.24"', s_content)
+        s_content = re.sub(r"id 'com\.android\.application' version '[^']*'", 'id "com.android.application" version "8.5.0"', s_content)
+        s_content = re.sub(r"id 'org\.jetbrains\.kotlin\.android' version '[^']*'", 'id "org.jetbrains.kotlin.android" version "1.9.24"', s_content)
+        with open(settings_gradle, 'w', encoding='utf-8') as f:
+            f.write(s_content)
+        print("Updated android/settings.gradle: AGP 8.5.0, Kotlin 1.9.24")
+
+    # 10. Configurar android/gradle.properties
+    gradle_props = 'android/gradle.properties'
+    p_lines = []
+    if os.path.exists(gradle_props):
+        with open(gradle_props, 'r', encoding='utf-8') as f:
+            p_lines = f.readlines()
+    
+    needed_props = {
+        'org.gradle.jvmargs': '-Xmx4G -XX:+HeapDumpOnOutOfMemoryError',
+        'android.useAndroidX': 'true',
+        'android.enableJetifier': 'true',
+        'kotlin.version': '1.9.24',
+    }
+    existing_keys = set()
+    new_lines = []
+    for line in p_lines:
+        k = line.split('=')[0].strip() if '=' in line else ''
+        if k in needed_props:
+            new_lines.append(f"{k}={needed_props[k]}\n")
+            existing_keys.add(k)
+        else:
+            new_lines.append(line)
+    for k, v in needed_props.items():
+        if k not in existing_keys:
+            new_lines.append(f"{k}={v}\n")
+    with open(gradle_props, 'w', encoding='utf-8') as f:
+        f.writelines(new_lines)
+    print("Updated android/gradle.properties")
+
+    # 11. Habilitar multidex y configurar compileSdk 35 y buildToolsVersion 35.0.0 en android/app/build.gradle
     app_gradle = 'android/app/build.gradle'
     if os.path.exists(app_gradle):
         with open(app_gradle, 'r', encoding='utf-8') as f:
@@ -156,42 +208,81 @@ class MainActivity: FlutterFragmentActivity()
         if 'multiDexEnabled' not in g_content:
             g_content = g_content.replace('defaultConfig {', 'defaultConfig {\n        multiDexEnabled true')
         
-        # Asegurar compileSdkVersion 34 (evita bug de android-35 en AAPT2)
-        g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 34', g_content)
-        g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 34', g_content)
-        g_content = re.sub(r'targetSdk\s*=\s*.*', 'targetSdk = 34', g_content)
-        g_content = re.sub(r'targetSdkVersion\s+.*', 'targetSdkVersion 34', g_content)
+        # compileSdk 35 y buildToolsVersion 35.0.0
+        g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 35\n    buildToolsVersion = "35.0.0"', g_content)
+        g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 35\n    buildToolsVersion "35.0.0"', g_content)
+        g_content = re.sub(r'targetSdk\s*=\s*.*', 'targetSdk = 35', g_content)
+        g_content = re.sub(r'targetSdkVersion\s+.*', 'targetSdkVersion 35', g_content)
+
+        # JavaVersion 17
+        g_content = re.sub(r'sourceCompatibility\s*=\s*JavaVersion\.[A-Za-z0-9_]+', 'sourceCompatibility = JavaVersion.VERSION_17', g_content)
+        g_content = re.sub(r'targetCompatibility\s*=\s*JavaVersion\.[A-Za-z0-9_]+', 'targetCompatibility = JavaVersion.VERSION_17', g_content)
 
         with open(app_gradle, 'w', encoding='utf-8') as f:
             f.write(g_content)
-        print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 34")
+        print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 35, buildToolsVersion 35.0.0, Java 17")
 
-    # 9. Configurar compileSdkVersion 34 en todos los subproyectos (plugins)
+    # 12. Configurar android/build.gradle con buildscript, Kotlin 1.9.24 y subprojects compileSdk 35
     root_gradle = 'android/build.gradle'
     if os.path.exists(root_gradle):
         with open(root_gradle, 'r', encoding='utf-8') as f:
             r_content = f.read()
         
-        # Eliminar cualquier hook previo que haya usado afterEvaluate
-        if 'afterEvaluate' in r_content:
-            r_content = re.sub(r'subprojects\s*\{[\s\S]*?afterEvaluate[\s\S]*?\}\s*\}', '', r_content)
-        
+        # Asegurar buildscript con ext.kotlin_version y dependencies
+        if 'ext.kotlin_version' not in r_content:
+            buildscript_block = '''buildscript {
+    ext.kotlin_version = '1.9.24'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.5.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'
+    }
+}
+
+'''
+            r_content = buildscript_block + r_content
+        else:
+            r_content = re.sub(r"ext\.kotlin_version\s*=\s*['\"][^'\"]*['\"]", "ext.kotlin_version = '1.9.24'", r_content)
+
+        # Limpiar cualquier subprojects previo
+        r_content = re.sub(r'subprojects\s*\{\s*project\s*->[\s\S]*?\}\s*\}', '', r_content)
+        r_content = re.sub(r'subprojects\s*\{[\s\S]*?withId\("com\.android\.library"\)[\s\S]*?\}\s*\}', '', r_content)
+
         subproject_hook = '''
-subprojects {
-    project.plugins.withId("com.android.library") {
-        project.android {
-            compileSdkVersion 34
-            buildToolsVersion "34.0.0"
+allprojects {
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:-deprecation"
+    }
+}
+
+subprojects { project ->
+    def configureSubproject = {
+        if (project.hasProperty('android')) {
+            project.android {
+                if (project.android.hasProperty('namespace') && project.android.namespace == null) {
+                    project.android.namespace = project.group ?: "com.pget.plugin.${project.name.replace('-', '_')}"
+                }
+                compileSdkVersion 35
+                buildToolsVersion "35.0.0"
+            }
+        }
+    }
+    if (project.state.executed) {
+        configureSubproject()
+    } else {
+        project.afterEvaluate {
+            configureSubproject()
         }
     }
 }
 '''
-        if 'withId("com.android.library")' not in r_content:
-            r_content += subproject_hook
-            with open(root_gradle, 'w', encoding='utf-8') as f:
-                f.write(r_content)
-            print("Configured android/build.gradle with subprojects plugins.withId('com.android.library') compileSdkVersion 34")
+        r_content += subproject_hook
+        with open(root_gradle, 'w', encoding='utf-8') as f:
+            f.write(r_content)
+        print("Updated android/build.gradle: buildscript, Kotlin 1.9.24, and subprojects compileSdkVersion 35 / buildToolsVersion 35.0.0")
 
 if __name__ == '__main__':
     generate_icons()
-
