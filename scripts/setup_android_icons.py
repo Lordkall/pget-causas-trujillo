@@ -148,16 +148,47 @@ class MainActivity: FlutterFragmentActivity()
                         f.write(content)
                     print(f"Updated {act_path} with FlutterFragmentActivity")
 
-    # 8. Habilitar multidex en android/app/build.gradle
+    # 8. Habilitar multidex y configurar compileSdkVersion 34 en android/app/build.gradle
     app_gradle = 'android/app/build.gradle'
     if os.path.exists(app_gradle):
         with open(app_gradle, 'r', encoding='utf-8') as f:
             g_content = f.read()
         if 'multiDexEnabled' not in g_content:
             g_content = g_content.replace('defaultConfig {', 'defaultConfig {\n        multiDexEnabled true')
+        
+        # Asegurar compileSdkVersion 34 (evita bug de android-35 en AAPT2)
+        g_content = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 34', g_content)
+        g_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', g_content)
+        g_content = re.sub(r'targetSdk\s*=\s*\d+', 'targetSdk = 34', g_content)
+        g_content = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 34', g_content)
+
         with open(app_gradle, 'w', encoding='utf-8') as f:
             f.write(g_content)
-        print("Updated android/app/build.gradle with multiDexEnabled true")
+        print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 34")
+
+    # 9. Configurar compileSdkVersion 34 y Kotlin 1.9.24 en todos los subproyectos (plugins como local_auth)
+    root_gradle = 'android/build.gradle'
+    if os.path.exists(root_gradle):
+        with open(root_gradle, 'r', encoding='utf-8') as f:
+            r_content = f.read()
+        
+        subproject_hook = '''
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            project.android {
+                compileSdkVersion 34
+                buildToolsVersion "34.0.0"
+            }
+        }
+    }
+}
+'''
+        if 'compileSdkVersion 34' not in r_content:
+            r_content += subproject_hook
+            with open(root_gradle, 'w', encoding='utf-8') as f:
+                f.write(r_content)
+            print("Configured android/build.gradle with subprojects compileSdkVersion 34")
 
 if __name__ == '__main__':
     generate_icons()
