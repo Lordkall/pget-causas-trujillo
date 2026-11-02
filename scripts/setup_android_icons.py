@@ -259,22 +259,9 @@ allprojects {
 }
 
 subprojects { project ->
-    def configureSubproject = {
-        if (project.hasProperty('android')) {
-            project.android {
-                if (project.android.hasProperty('namespace') && project.android.namespace == null) {
-                    project.android.namespace = project.group ?: "com.pget.plugin.${project.name.replace('-', '_')}"
-                }
-                compileSdkVersion 35
-                buildToolsVersion "35.0.0"
-            }
-        }
-    }
-    if (project.state.executed) {
-        configureSubproject()
-    } else {
-        project.afterEvaluate {
-            configureSubproject()
+    project.plugins.withId("com.android.library") {
+        if (project.android.hasProperty('namespace') && project.android.namespace == null) {
+            project.android.namespace = project.group ?: "com.pget.plugin.${project.name.replace('-', '_')}"
         }
     }
 }
