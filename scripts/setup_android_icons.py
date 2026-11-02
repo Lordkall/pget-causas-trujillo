@@ -157,38 +157,40 @@ class MainActivity: FlutterFragmentActivity()
             g_content = g_content.replace('defaultConfig {', 'defaultConfig {\n        multiDexEnabled true')
         
         # Asegurar compileSdkVersion 34 (evita bug de android-35 en AAPT2)
-        g_content = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 34', g_content)
-        g_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', g_content)
-        g_content = re.sub(r'targetSdk\s*=\s*\d+', 'targetSdk = 34', g_content)
-        g_content = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 34', g_content)
+        g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 34', g_content)
+        g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 34', g_content)
+        g_content = re.sub(r'targetSdk\s*=\s*.*', 'targetSdk = 34', g_content)
+        g_content = re.sub(r'targetSdkVersion\s+.*', 'targetSdkVersion 34', g_content)
 
         with open(app_gradle, 'w', encoding='utf-8') as f:
             f.write(g_content)
         print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 34")
 
-    # 9. Configurar compileSdkVersion 34 y Kotlin 1.9.24 en todos los subproyectos (plugins como local_auth)
+    # 9. Configurar compileSdkVersion 34 en todos los subproyectos (plugins)
     root_gradle = 'android/build.gradle'
     if os.path.exists(root_gradle):
         with open(root_gradle, 'r', encoding='utf-8') as f:
             r_content = f.read()
         
+        # Eliminar cualquier hook previo que haya usado afterEvaluate
+        if 'afterEvaluate' in r_content:
+            r_content = re.sub(r'subprojects\s*\{[\s\S]*?afterEvaluate[\s\S]*?\}\s*\}', '', r_content)
+        
         subproject_hook = '''
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty("android")) {
-            project.android {
-                compileSdkVersion 34
-                buildToolsVersion "34.0.0"
-            }
+    project.plugins.withId("com.android.library") {
+        project.android {
+            compileSdkVersion 34
+            buildToolsVersion "34.0.0"
         }
     }
 }
 '''
-        if 'compileSdkVersion 34' not in r_content:
+        if 'withId("com.android.library")' not in r_content:
             r_content += subproject_hook
             with open(root_gradle, 'w', encoding='utf-8') as f:
                 f.write(r_content)
-            print("Configured android/build.gradle with subprojects compileSdkVersion 34")
+            print("Configured android/build.gradle with subprojects plugins.withId('com.android.library') compileSdkVersion 34")
 
 if __name__ == '__main__':
     generate_icons()
