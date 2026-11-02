@@ -183,6 +183,7 @@ class MainActivity: FlutterFragmentActivity()
         'android.useAndroidX': 'true',
         'android.enableJetifier': 'true',
         'kotlin.version': '1.9.24',
+        'kotlin.jvm.target.validation.mode': 'IGNORE',
     }
     existing_keys = set()
     new_lines = []
@@ -208,9 +209,9 @@ class MainActivity: FlutterFragmentActivity()
         if 'multiDexEnabled' not in g_content:
             g_content = g_content.replace('defaultConfig {', 'defaultConfig {\n        multiDexEnabled true')
         
-        # compileSdk 35 y buildToolsVersion 35.0.0
-        g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 35\n    buildToolsVersion = "35.0.0"', g_content)
-        g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 35\n    buildToolsVersion "35.0.0"', g_content)
+        # compileSdk 35 y buildToolsVersion 35.0.0 y ndkVersion 26.1.10909125
+        g_content = re.sub(r'compileSdk\s*=\s*.*', 'compileSdk = 35\n    buildToolsVersion = "35.0.0"\n    ndkVersion = "26.1.10909125"', g_content)
+        g_content = re.sub(r'compileSdkVersion\s+.*', 'compileSdkVersion 35\n    buildToolsVersion "35.0.0"\n    ndkVersion = "26.1.10909125"', g_content)
         g_content = re.sub(r'targetSdk\s*=\s*.*', 'targetSdk = 35', g_content)
         g_content = re.sub(r'targetSdkVersion\s+.*', 'targetSdkVersion 35', g_content)
 
@@ -218,9 +219,15 @@ class MainActivity: FlutterFragmentActivity()
         g_content = re.sub(r'sourceCompatibility\s*=\s*JavaVersion\.[A-Za-z0-9_]+', 'sourceCompatibility = JavaVersion.VERSION_17', g_content)
         g_content = re.sub(r'targetCompatibility\s*=\s*JavaVersion\.[A-Za-z0-9_]+', 'targetCompatibility = JavaVersion.VERSION_17', g_content)
 
+        # kotlinOptions jvmTarget 17
+        if 'kotlinOptions {' in g_content:
+            g_content = re.sub(r'jvmTarget\s*=\s*.*', "jvmTarget = '17'", g_content)
+        else:
+            g_content = g_content.replace('compileOptions {', "kotlinOptions {\n        jvmTarget = '17'\n    }\n    compileOptions {")
+
         with open(app_gradle, 'w', encoding='utf-8') as f:
             f.write(g_content)
-        print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 35, buildToolsVersion 35.0.0, Java 17")
+        print("Updated android/app/build.gradle: multiDexEnabled true, compileSdk 35, ndkVersion 26.1.10909125, Java 17, Kotlin 17")
 
     # 12. Configurar android/build.gradle con buildscript, Kotlin 1.9.24 y subprojects compileSdk 35
     root_gradle = 'android/build.gradle'
@@ -255,6 +262,11 @@ class MainActivity: FlutterFragmentActivity()
 allprojects {
     tasks.withType(JavaCompile) {
         options.compilerArgs << "-Xlint:-deprecation"
+    }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
     }
 }
 
