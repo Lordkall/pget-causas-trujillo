@@ -130,14 +130,34 @@ def generate_icons():
         for file in files:
             if file.startswith('MainActivity'):
                 act_path = os.path.join(root, file)
-                with open(act_path, 'r', encoding='utf-8') as f:
-                    act_content = f.read()
-                act_content = act_content.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterFragmentActivity')
-                act_content = act_content.replace(': FlutterActivity()', ': FlutterFragmentActivity()')
-                act_content = act_content.replace('extends FlutterActivity', 'extends FlutterFragmentActivity')
-                with open(act_path, 'w', encoding='utf-8') as f:
-                    f.write(act_content)
-                print(f"Updated {act_path} to use FlutterFragmentActivity for biometrics")
+                if file.endswith('.kt'):
+                    with open(act_path, 'w', encoding='utf-8') as f:
+                        f.write('''package com.pget.trujillo.data_abogados
+
+import io.flutter.embedding.android.FlutterFragmentActivity
+
+class MainActivity: FlutterFragmentActivity()
+''')
+                    print(f"Set {act_path} to use FlutterFragmentActivity")
+                elif file.endswith('.java'):
+                    with open(act_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content = content.replace('import io.flutter.embedding.android.FlutterActivity;', 'import io.flutter.embedding.android.FlutterFragmentActivity;')
+                    content = content.replace('extends FlutterActivity', 'extends FlutterFragmentActivity')
+                    with open(act_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"Updated {act_path} with FlutterFragmentActivity")
+
+    # 8. Habilitar multidex en android/app/build.gradle
+    app_gradle = 'android/app/build.gradle'
+    if os.path.exists(app_gradle):
+        with open(app_gradle, 'r', encoding='utf-8') as f:
+            g_content = f.read()
+        if 'multiDexEnabled' not in g_content:
+            g_content = g_content.replace('defaultConfig {', 'defaultConfig {\n        multiDexEnabled true')
+        with open(app_gradle, 'w', encoding='utf-8') as f:
+            f.write(g_content)
+        print("Updated android/app/build.gradle with multiDexEnabled true")
 
 if __name__ == '__main__':
     generate_icons()

@@ -63,7 +63,12 @@ jobs:
           dart run flutter_launcher_icons || true
 
       - name: Build Android Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+        run: |
+          flutter build apk --release --no-tree-shake-icons || {
+            echo "::error::Flutter build failed. Showing verbose output:"
+            flutter build apk --release --no-tree-shake-icons -v
+            exit 1
+          }
 
       - name: Upload APK as Release Artifact
         uses: actions/upload-artifact@v4
