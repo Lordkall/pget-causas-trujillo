@@ -12,6 +12,7 @@ Thumbs.db
 .flutter-plugins-dependencies
 .packages
 build/
+build_output/
 .pub-cache/
 .pub/
 
