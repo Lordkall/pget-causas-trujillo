@@ -9,3 +9,4 @@ with urllib.request.urlopen(req) as resp:
         print('Job:', j['name'], '-> Conclusion:', j['conclusion'])
         for s in j.get('steps', []):
             print(f"  Step: {s['name']} | Conclusion: {s['conclusion']}")
+

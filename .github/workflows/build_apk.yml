@@ -64,11 +64,18 @@ jobs:
 
       - name: Build Android Release APK
         run: |
-          flutter build apk --release --no-tree-shake-icons || {
-            echo "::error::Flutter build failed. Showing verbose output:"
-            flutter build apk --release --no-tree-shake-icons -v
+          if ! flutter build apk --release --no-tree-shake-icons > build_log.txt 2>&1; then
+            echo "=== FLUTTER BUILD ERROR OUTPUT ==="
+            tail -n 150 build_log.txt
             exit 1
-          }
+          fi
+
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_error_log.txt
+          path: build_log.txt
 
       - name: Upload APK as Release Artifact
         uses: actions/upload-artifact@v4
