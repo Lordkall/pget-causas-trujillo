@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/abogados_provider.dart';
 import '../models/abogado_pget.dart';
 import '../theme/app_theme.dart';
@@ -14,15 +16,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
-  final _emailCtrl = TextEditingController(text: 'lizamarbriceno@pget.com');
-  final _passCtrl = TextEditingController(text: 'Admin2026*Lizamar');
+  // Los campos inician vacíos para garantizar privacidad y que no queden credenciales pegadas
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   bool _obscurePassword = true;
+  bool _rememberEmail = false;
   bool _isLoading = false;
 
-  // Estado biométrico en memoria de sesión
-  static bool _biometricsEnrolled = false;
-  static AbogadoPGET? _enrolledUser;
-  static bool _promptedOnce = false;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _biometricsEnrolled = false;
+  String? _enrolledEmail;
+  String? _enrolledUserName;
 
   late AnimationController _gavelAnimCtrl;
   late Animation<double> _gavelRotation;
@@ -32,6 +36,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
+    _initAnimations();
+    _cargarPreferenciasGuardadas();
+  }
+
+  void _initAnimations() {
     _gavelAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 750),
@@ -56,6 +65,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     ]).animate(_gavelAnimCtrl);
   }
 
+  Future<void> _cargarPreferenciasGuardadas() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final remember = prefs.getBool('pget_remember_email') ?? false;
+      final savedEmail = prefs.getString('pget_saved_email') ?? '';
+      final enrolled = prefs.getBool('pget_biometrics_enrolled') ?? false;
+      final bEmail = prefs.getString('pget_biometrics_email');
+      final bName = prefs.getString('pget_biometrics_name');
+
+      if (mounted) {
+        setState(() {
+          _rememberEmail = remember;
+          if (remember && savedEmail.isNotEmpty) {
+            _emailCtrl.text = savedEmail;
+          }
+          _biometricsEnrolled = enrolled;
+          _enrolledEmail = bEmail;
+          _enrolledUserName = bName;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando preferencias de inicio de sesión: $e');
+    }
+  }
+
   @override
   void dispose() {
     _emailCtrl.dispose();
@@ -68,6 +102,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text.trim();
 
+    if (email.isEmpty || pass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppTheme.vinotinto,
+          content: Text('Por favor ingresa tu correo y contraseña institucional.'),
+        ),
+      );
+      return;
+    }
+
     final provider = context.read<AbogadosProvider>();
     final ok = provider.login(email, pass);
 
@@ -75,27 +119,63 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: AppTheme.vinotinto,
-          content: Text('Credenciales incorrectas. Verifica tu correo y clave.'),
+          content: Text('Credenciales incorrectas. Verifica tu correo y contraseña.'),
         ),
       );
       return;
     }
 
-    // Si es la primera vez que inicia sesión, preguntar si desea activar huella biométrica
-    if (!_promptedOnce && !_biometricsEnrolled) {
-      final user = provider.usuarioAutenticado;
-      final activar = await _mostrarDialogoPreguntaBiometrica(user?.nombre ?? 'Funcionario');
-      _promptedOnce = true;
-      if (activar == true) {
-        _biometricsEnrolled = true;
-        _enrolledUser = user;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppTheme.vinotintoDark,
-              content: Text('¡Acceso con huella dactilar activado con éxito!'),
-            ),
-          );
+    // Gestionar almacenamiento seguro de correo recordado
+    final prefs = await SharedPreferences.getInstance();
+    if (_rememberEmail) {
+      await prefs.setBool('pget_remember_email', true);
+      await prefs.setString('pget_saved_email', email);
+    } else {
+      await prefs.remove('pget_remember_email');
+      await prefs.remove('pget_saved_email');
+    }
+
+    // Limpiar campo de contraseña por seguridad
+    _passCtrl.clear();
+
+    // Si aún no ha activado la huella en este dispositivo y el hardware lo permite, preguntar
+    final user = provider.usuarioAutenticado;
+    if (!_biometricsEnrolled && user != null) {
+      final bool canCheck = await _localAuth.canCheckBiometrics;
+      final bool isSupported = await _localAuth.isDeviceSupported();
+
+      if (canCheck || isSupported) {
+        final activar = await _mostrarDialogoPreguntaBiometrica(user.nombre);
+        if (activar == true) {
+          try {
+            final didAuth = await _localAuth.authenticate(
+              localizedReason: 'Escanee su huella dactilar para activar el acceso biométrico a PGET Causas',
+              options: const AuthenticationOptions(
+                biometricOnly: true,
+                stickyAuth: true,
+              ),
+            );
+
+            if (didAuth) {
+              await prefs.setBool('pget_biometrics_enrolled', true);
+              await prefs.setString('pget_biometrics_email', user.correo);
+              await prefs.setString('pget_biometrics_name', user.nombre);
+              _biometricsEnrolled = true;
+              _enrolledEmail = user.correo;
+              _enrolledUserName = user.nombre;
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: AppTheme.vinotintoDark,
+                    content: Text('¡Huella dactilar vinculada con éxito para ${user.nombre}!'),
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint('Error vinculando huella: $e');
+          }
         }
       }
     }
@@ -145,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 children: [
                   Text('⚡ Ingreso instantáneo en 1 toque', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.vinotintoDark)),
                   SizedBox(height: 4),
-                  Text('🔒 Respaldo criptográfico del dispositivo', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.vinotintoDark)),
+                  Text('🔒 Respaldo criptográfico del sensor físico', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.vinotintoDark)),
                 ],
               ),
             ),
@@ -174,72 +254,109 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _ingresoConHuella() async {
-    if (!_biometricsEnrolled) {
-      // Si aún no está activado, preguntar o auto-iniciar con la cuenta admin para agilidad
-      final provider = context.read<AbogadosProvider>();
-      final ok = provider.login('lizamarbriceno@pget.com', 'Admin2026*Lizamar');
-      if (ok) {
-        _biometricsEnrolled = true;
-        _enrolledUser = provider.usuarioAutenticado;
-      }
-    }
+    // 1. Verificar si el dispositivo tiene soporte biométrico
+    final bool canCheck = await _localAuth.canCheckBiometrics;
+    final bool isSupported = await _localAuth.isDeviceSupported();
 
-    // Simulación del escáner de huella
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        Future.delayed(const Duration(milliseconds: 900), () {
-          if (Navigator.of(ctx).canPop()) {
-            Navigator.of(ctx).pop();
-          }
-        });
-        return Dialog(
-          backgroundColor: const Color(0xFF1E0308).withOpacity(0.95),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: const BorderSide(color: AppTheme.oro, width: 2),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: AppTheme.vinotintoDark,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.oro, width: 2),
-                  ),
-                  child: const Icon(Icons.fingerprint, color: AppTheme.oro, size: 44),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Sensor de Huella PGET',
-                  style: TextStyle(color: AppTheme.oro, fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Validando despacho de ${_enrolledUser?.nombre ?? "Dra. Lizamar Briceño"}...',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-                const SizedBox(height: 14),
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(color: AppTheme.oro, strokeWidth: 2),
-                ),
-              ],
-            ),
+    if (!canCheck && !isSupported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: AppTheme.vinotinto,
+            content: Text('Este dispositivo no cuenta con sensor de huella dactilar activo.'),
           ),
         );
-      },
-    );
+      }
+      return;
+    }
 
-    _ejecutarCargaJudicialYEntrar();
+    // 2. Verificar si hay un usuario enrolado
+    final prefs = await SharedPreferences.getInstance();
+    final enrolled = prefs.getBool('pget_biometrics_enrolled') ?? false;
+    final savedEmail = prefs.getString('pget_biometrics_email');
+
+    if (!enrolled || savedEmail == null || savedEmail.isEmpty) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: const BorderSide(color: AppTheme.oro, width: 2),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.fingerprint, color: AppTheme.oro, size: 26),
+                SizedBox(width: 8),
+                Text('Huella No Registrada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.vinotinto)),
+              ],
+            ),
+            content: const Text(
+              'Aún no has configurado tu huella en este dispositivo.\n\nPor favor inicia sesión primero con tu correo y contraseña institucional; al ingresar se te preguntará si deseas activar el acceso con huella dactilar.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.vinotinto),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Entendido', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    // 3. Invocar autenticación biométrica REAL del sistema operativo Android
+    try {
+      final bool didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Coloque su huella dactilar en el sensor para acceder a PGET Causas',
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+          useErrorDialogs: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        final provider = context.read<AbogadosProvider>();
+        final ok = provider.loginBiometrico(savedEmail);
+
+        if (ok) {
+          _passCtrl.clear();
+          _ejecutarCargaJudicialYEntrar();
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppTheme.vinotinto,
+                content: Text('No se pudo autenticar el usuario vinculado a la huella dactilar.'),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppTheme.vinotintoDark,
+              content: Text('Autenticación biométrica no completada o cancelada.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error en sensor biométrico: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppTheme.vinotinto,
+            content: Text('Error del sensor biométrico: $e'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _ejecutarCargaJudicialYEntrar() async {
@@ -263,7 +380,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       backgroundColor: const Color(0xFF38050F),
       body: Stack(
         children: [
-          // 1. IMAGEN DE FONDO PALACIO DE GOBIERNO CON VINOTINTO QUE ABARCA EL 100% DE LA IMAGEN
+          // 1. IMAGEN DE FONDO PALACIO DE GOBIERNO
           Positioned.fill(
             child: Image.asset(
               'assets/palacio_gobierno.jpg',
@@ -272,7 +389,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           ),
 
-          // 2. CAPA VINOTINTO COMPLETA Y UNIFORME SOBRE TODA LA IMAGEN (SIN DEJAR PARTES SIN PINTAR)
+          // 2. CAPA VINOTINTO COMPLETA Y UNIFORME SOBRE TODA LA IMAGEN (100% COBERTURA)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -456,7 +573,40 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 10),
+
+                            // OPCIÓN: RECORDAR MI CORREO INSTITUCIONAL
+                            Row(
+                              children: [
+                                SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: Checkbox(
+                                    value: _rememberEmail,
+                                    activeColor: AppTheme.vinotinto,
+                                    checkColor: Colors.white,
+                                    side: const BorderSide(color: AppTheme.oro, width: 1.5),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                    onChanged: (val) {
+                                      setState(() => _rememberEmail = val ?? false);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: () => setState(() => _rememberEmail = !_rememberEmail),
+                                  child: const Text(
+                                    'Recordar correo en este dispositivo',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.vinotinto,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
 
                             // BOTÓN INICIAR SESIÓN
                             ElevatedButton(
@@ -498,13 +648,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                             const SizedBox(height: 8),
 
-                            // BOTÓN DE ACCESO CON HUELLA DACTILAR
+                            // BOTÓN DE ACCESO CON HUELLA DACTILAR REAL
                             OutlinedButton.icon(
                               onPressed: _isLoading ? null : _ingresoConHuella,
                               icon: const Icon(Icons.fingerprint, color: AppTheme.vinotinto, size: 22),
-                              label: const Text(
-                                'Ingresar con Huella Dactilar',
-                                style: TextStyle(color: AppTheme.vinotinto, fontWeight: FontWeight.bold, fontSize: 12.5),
+                              label: Text(
+                                _biometricsEnrolled && _enrolledUserName != null
+                                    ? 'Ingresar con Huella (${_enrolledUserName!.split(' ').first})'
+                                    : 'Ingresar con Huella Dactilar',
+                                style: const TextStyle(color: AppTheme.vinotinto, fontWeight: FontWeight.bold, fontSize: 12.5),
                               ),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),

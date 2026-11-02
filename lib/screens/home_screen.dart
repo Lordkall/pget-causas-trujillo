@@ -455,13 +455,18 @@ class _HomeScreenState extends State<HomeScreen> {
       return '';
     }
 
+    final provider = context.read<AbogadosProvider>();
+    final rowYear = provider.getRowYear(row);
+
     final expIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('EXPEDIENTE') || c.toUpperCase().contains('INVESTIGACION'));
+    final demandanteIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('DEMANDANTE') || c.toUpperCase().contains('QUERELLANTE') || c.toUpperCase().contains('SOLICITANTE') || c.toUpperCase().contains('ACTOR'));
     final motivoIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('MOTIVO') || c.toUpperCase().contains('DELITO'));
     final demandadoIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('DEMANDADO') || c.toUpperCase().contains('QUERELLADO') || c.toUpperCase().contains('IMPUTADO'));
     final abgIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('ABG') || c.toUpperCase().contains('RESPONSABLE'));
     final estadoIdx = tab.columns.indexWhere((c) => c.toUpperCase().contains('ESTADO'));
 
     final expediente = expIdx != -1 ? getVal(expIdx) : 'Fila $index';
+    final demandante = demandanteIdx != -1 ? getVal(demandanteIdx) : '';
     final motivo = motivoIdx != -1 ? getVal(motivoIdx) : 'Asunto registrado';
     final demandado = demandadoIdx != -1 ? getVal(demandadoIdx) : '';
     final abogado = abgIdx != -1 ? getVal(abgIdx) : '';
@@ -504,17 +509,37 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppTheme.vinotinto,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppTheme.oro),
-                      ),
-                      child: Text(
-                        expediente.isNotEmpty ? 'EXP. $expediente' : 'REGISTRO #$index',
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.vinotinto,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppTheme.oro),
+                          ),
+                          child: Text(
+                            expediente.isNotEmpty ? 'EXP. $expediente' : 'REGISTRO #$index',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        if (rowYear != null && rowYear.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.vinotintoTint,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTheme.oroBorde),
+                            ),
+                            child: Text(
+                              'Año $rowYear',
+                              style: const TextStyle(color: AppTheme.vinotinto, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -537,13 +562,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (demandante.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.person, size: 14, color: AppTheme.oroDark),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          demandante,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (demandado.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Contra: $demandado',
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textoSecundario),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 3),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.shield_outlined, size: 13, color: Colors.blueGrey),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Contra: $demandado',
+                          style: const TextStyle(fontSize: 11.5, color: AppTheme.textoSecundario),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 10),

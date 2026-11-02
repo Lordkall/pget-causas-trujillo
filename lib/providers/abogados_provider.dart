@@ -57,22 +57,127 @@ class AbogadosProvider with ChangeNotifier {
   String get selectedEstadoFilter => _selectedEstadoFilter;
   String get selectedYearFilter => _selectedYearFilter;
 
+  // Mapa de año calculado para cada fila de la pestaña actual
+  final Map<int, String> _rowYearMap = {};
+
+  bool _isValidCause(List<dynamic> row) {
+    final nonBlank = row.where((c) => c != null && c.toString().trim().isNotEmpty).toList();
+    if (nonBlank.length <= 1) return false;
+    final joined = nonBlank.map((c) => c.toString().trim()).join(' ').toUpperCase();
+    if (nonBlank.length <= 2) {
+      if (joined.contains('CAUSA') || RegExp(r'^(?:19|20)\d\d$').hasMatch(nonBlank[0].toString().trim())) {
+        return false;
+      }
+    }
+    if (nonBlank.length >= 3 && joined.contains('TRIBUNAL') && (joined.contains('DEMANDANTE') || joined.contains('QUERELLANTE'))) {
+      return false;
+    }
+    return true;
+  }
+
+  static final RegExp _dotYearRegExp = RegExp(r'\b(1\.9\d\d|2\.0[0-3]\d)\b');
+  static final RegExp _fourDigitYearRegExp = RegExp(r'\b(19[89]\d|20[0-3]\d)\b');
+  static final RegExp _twoDigitYearRegExp = RegExp(r'[-/](9\d|0\d|1\d|2[0-6])\b');
+  static final RegExp _sectionYearRegExp = RegExp(
+    r'(?:CAUSAS\s+(?:DEL\s+)?(?:AO|AÑO|DE|EN)?\s*)?(19[89]\d|2\.0[0-3]\d|20[0-3]\d)',
+    caseSensitive: false,
+  );
+
+  static String? _cleanYear(dynamic val) {
+    if (val == null) return null;
+    final s = val.toString().trim();
+    if (s.isEmpty) return null;
+
+    final dotMatch = _dotYearRegExp.firstMatch(s);
+    if (dotMatch != null) {
+      return dotMatch.group(1)!.replaceAll('.', '');
+    }
+
+    final fourMatch = _fourDigitYearRegExp.firstMatch(s);
+    if (fourMatch != null) {
+      return fourMatch.group(1);
+    }
+
+    final twoMatch = _twoDigitYearRegExp.firstMatch(s);
+    if (twoMatch != null) {
+      final y2 = int.tryParse(twoMatch.group(1)!) ?? 0;
+      return (y2 >= 80 ? 1900 + y2 : 2000 + y2).toString();
+    }
+
+    return null;
+  }
+
+  void _recomputeRowYears() {
+    _rowYearMap.clear();
+    String? currentSecYear;
+
+    final fecIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('FECHA'));
+    final expIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('EXPEDIENTE') || c.toUpperCase().contains('INVESTIGACION'));
+
+    for (int i = 0; i < _currentTabRows.length; i++) {
+      final row = _currentTabRows[i];
+      final nonBlank = row.where((c) => c != null && c.toString().trim().isNotEmpty).toList();
+      if (nonBlank.isEmpty) continue;
+
+      if (nonBlank.length <= 2) {
+        final joined = nonBlank.map((c) => c.toString().trim()).join(' ');
+        final secM = _sectionYearRegExp.firstMatch(joined);
+        if (secM != null) {
+          currentSecYear = secM.group(1)!.replaceAll('.', '');
+          continue;
+        }
+      }
+
+      String? year;
+      if (fecIdx != -1 && fecIdx < row.length) {
+        year = _cleanYear(row[fecIdx]);
+      }
+      if (year == null && expIdx != -1 && expIdx < row.length) {
+        year = _cleanYear(row[expIdx]);
+      }
+      if (year == null) {
+        final limit = row.length < 8 ? row.length : 8;
+        for (int c = 0; c < limit; c++) {
+          year = _cleanYear(row[c]);
+          if (year != null) break;
+        }
+      }
+      year ??= currentSecYear;
+
+      if (year != null && year.isNotEmpty) {
+        _rowYearMap[i] = year;
+      }
+    }
+  }
+
+  String? getRowYear(List<dynamic> row) {
+    final idx = _currentTabRows.indexOf(row);
+    if (idx != -1 && _rowYearMap.containsKey(idx)) {
+      return _rowYearMap[idx];
+    }
+    return _extractYearFromRow(row);
+  }
+
   /// Retorna las causas mapeadas como objetos CausaJudicial usando la estructura de la pestaña activa
   List<CausaJudicial> get causas {
-    return _currentTabRows.asMap().entries.map((entry) {
+    return _currentTabRows
+        .asMap()
+        .entries
+        .where((entry) => _isValidCause(entry.value))
+        .map((entry) {
       final index = entry.key + 1;
       final row = entry.value;
       return CausaJudicial.fromTabRow(_currentTab, row, rowIndex: index);
     }).toList();
   }
 
-  int get totalCausasTab => _currentTabRows.length;
+  int get totalCausasTab => _currentTabRows.where(_isValidCause).length;
 
   int get causasActivasTab {
     final estadoIdx = _getEstadoColumnIndex();
-    if (estadoIdx == -1) return _currentTabRows.length;
     return _currentTabRows.where((r) {
-      if (r.length <= estadoIdx) return false;
+      if (!_isValidCause(r)) return false;
+      if (estadoIdx == -1 || r.length <= estadoIdx) return true;
       final val = r[estadoIdx].toString().toUpperCase();
       return val.contains('ACTIV');
     }).length;
@@ -82,17 +187,19 @@ class AbogadosProvider with ChangeNotifier {
     final estadoIdx = _getEstadoColumnIndex();
     if (estadoIdx == -1) return 0;
     return _currentTabRows.where((r) {
+      if (!_isValidCause(r)) return false;
       if (r.length <= estadoIdx) return false;
       final val = r[estadoIdx].toString().toUpperCase();
       return val.contains('CERRAD');
     }).length;
   }
 
-  /// Lista de años disponibles en la pestaña actual para filtrar
+  /// Lista de años disponibles en la pestaña actual para filtrar (ordenados de más reciente a más antiguo)
   List<String> get availableYears {
     final Set<String> years = {};
-    for (final r in _currentTabRows) {
-      final y = _extractYearFromRow(r);
+    for (int i = 0; i < _currentTabRows.length; i++) {
+      if (!_isValidCause(_currentTabRows[i])) continue;
+      final y = _rowYearMap[i];
       if (y != null && y.isNotEmpty) {
         years.add(y);
       }
@@ -102,12 +209,19 @@ class AbogadosProvider with ChangeNotifier {
   }
 
   String? _extractYearFromRow(List<dynamic> row) {
-    final text = row.join(' ');
-    // Buscar formato de 4 dígitos entre 1990 y 2030
-    final regExp = RegExp(r'\b(199\d|20[0-3]\d)\b');
-    final matches = regExp.allMatches(text);
-    if (matches.isNotEmpty) {
-      return matches.last.group(0);
+    final fecIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('FECHA'));
+    if (fecIdx != -1 && fecIdx < row.length) {
+      final y = _cleanYear(row[fecIdx]);
+      if (y != null) return y;
+    }
+    final expIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('EXPEDIENTE') || c.toUpperCase().contains('INVESTIGACION'));
+    if (expIdx != -1 && expIdx < row.length) {
+      final y = _cleanYear(row[expIdx]);
+      if (y != null) return y;
+    }
+    for (int c = 0; c < (row.length < 8 ? row.length : 8); c++) {
+      final y = _cleanYear(row[c]);
+      if (y != null) return y;
     }
     return null;
   }
@@ -164,37 +278,42 @@ class AbogadosProvider with ChangeNotifier {
   // Filtrado de filas de la pestaña activa (por Búsqueda, Estado y Año - Sin obligar a seleccionar abogado)
   List<List<dynamic>> get filteredRows {
     final estIdx = _getEstadoColumnIndex();
+    final List<List<dynamic>> result = [];
 
-    return _currentTabRows.where((row) {
+    for (int i = 0; i < _currentTabRows.length; i++) {
+      final row = _currentTabRows[i];
+      if (!_isValidCause(row)) continue;
+
       // 1. Filtro de Estado
       if (_selectedEstadoFilter != 'TODAS' && estIdx != -1) {
         if (row.length > estIdx) {
           final estadoFila = row[estIdx].toString().toUpperCase();
           if (!estadoFila.contains(_selectedEstadoFilter.toUpperCase())) {
-            return false;
+            continue;
           }
         }
       }
 
-      // 3. Filtro de Año
+      // 2. Filtro de Año
       if (_selectedYearFilter != 'TODOS') {
-        final rowYear = _extractYearFromRow(row);
+        final rowYear = _rowYearMap[i];
         if (rowYear != _selectedYearFilter) {
-          return false;
+          continue;
         }
       }
 
-      // 4. Búsqueda por Texto
+      // 3. Búsqueda por Texto
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final rowText = row.join(' ').toLowerCase();
         if (!rowText.contains(query)) {
-          return false;
+          continue;
         }
       }
 
-      return true;
-    }).toList();
+      result.add(row);
+    }
+    return result;
   }
 
   /// Cargar las filas de la pestaña actualmente seleccionada
@@ -206,6 +325,7 @@ class AbogadosProvider with ChangeNotifier {
     try {
       final rows = await _sheetsService.getRowsForTab(_currentTab);
       _currentTabRows = rows;
+      _recomputeRowYears();
     } catch (e) {
       _errorMessage = e.toString();
       debugPrint("Error loading tab rows: $e");
@@ -508,6 +628,27 @@ class AbogadosProvider with ChangeNotifier {
           expediente: 'AUTENTICACIÓN',
           pestana: 'SEGURIDAD',
           detalle: 'Inicio de sesión exitoso: ${a.nombre} (${a.rol.toUpperCase()}).',
+          usuario: a.nombre,
+        );
+        notifyListeners();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool loginBiometrico(String correo) {
+    final c = correo.trim().toLowerCase();
+    for (final a in _abogados) {
+      if (a.correo.toLowerCase() == c) {
+        _usuarioAutenticado = a;
+        _isAdminMode = (a.rol == 'admin');
+        _abogadoSesion = a;
+        registrarAuditoria(
+          accion: 'LOGIN BIOMÉTRICO',
+          expediente: 'HUELLA DACTILAR',
+          pestana: 'SEGURIDAD',
+          detalle: 'Acceso validado por sensor biométrico: ${a.nombre} (${a.rol.toUpperCase()}).',
           usuario: a.nombre,
         );
         notifyListeners();

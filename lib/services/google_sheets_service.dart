@@ -57,6 +57,18 @@ class GoogleSheetsService {
     }
   }
 
+  static String _stripAccents(String text) {
+    return text
+        .toUpperCase()
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('Ñ', 'N')
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
   /// Cargar datos cacheados de respaldo desde assets/pget_all_rows.json
   Future<List<List<dynamic>>> _loadFallbackRows(String tabTitle) async {
     try {
@@ -72,11 +84,13 @@ class GoogleSheetsService {
 
       if (_cachedRowsMap != null) {
         final normTarget = tabTitle.trim().toUpperCase();
+        final strippedTarget = _stripAccents(tabTitle);
 
         // 1. Si el JSON es de formato directo: { "TAB_TITLE": [ [row1], [row2] ] }
         for (final entry in _cachedRowsMap!.entries) {
           final keyUpper = entry.key.trim().toUpperCase();
-          if (keyUpper == normTarget || keyUpper.contains(normTarget) || normTarget.contains(keyUpper)) {
+          final keyStripped = _stripAccents(entry.key);
+          if (keyUpper == normTarget || keyStripped == strippedTarget || keyUpper.contains(normTarget) || normTarget.contains(keyUpper) || keyStripped.contains(strippedTarget) || strippedTarget.contains(keyStripped)) {
             if (entry.value is List) {
               final list = entry.value as List<dynamic>;
               if (list.isNotEmpty && list.first is List) {
@@ -91,9 +105,9 @@ class GoogleSheetsService {
           final causesByTab = _cachedRowsMap!['causes_by_tab'] as Map<String, dynamic>;
           for (final entry in causesByTab.entries) {
             final keyUpper = entry.key.trim().toUpperCase();
-            if (keyUpper == normTarget || keyUpper.contains(normTarget) || normTarget.contains(keyUpper)) {
+            final keyStripped = _stripAccents(entry.key);
+            if (keyUpper == normTarget || keyStripped == strippedTarget || keyUpper.contains(normTarget) || normTarget.contains(keyUpper) || keyStripped.contains(strippedTarget) || strippedTarget.contains(keyStripped)) {
               final list = entry.value as List<dynamic>;
-              // Mapear objetos a listas dinámicas si fuera necesario
               return list.map((item) {
                 if (item is List) return item;
                 if (item is Map) {

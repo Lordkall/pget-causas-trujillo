@@ -111,9 +111,33 @@ def generate_icons():
         else:
             content = re.sub(r'android:roundIcon="[^"]*"', 'android:roundIcon="@mipmap/ic_launcher_round"', content)
 
+        # Asegurar permisos de Internet, red y biometría en AndroidManifest.xml
+        permissions = '''
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+'''
+        if 'android.permission.INTERNET' not in content:
+            content = content.replace('<application', permissions + '    <application')
+
         with open(manifest_path, 'w', encoding='utf-8') as f:
             f.write(content)
-        print("Updated AndroidManifest.xml: label='PGET Causas', icon='@mipmap/ic_launcher'")
+        print("Updated AndroidManifest.xml: label='PGET Causas', icon='@mipmap/ic_launcher', Internet and Biometric permissions added")
+
+    # 7. Actualizar MainActivity para soporte biométrico con FlutterFragmentActivity
+    for root, dirs, files in os.walk('android/app/src/main'):
+        for file in files:
+            if file.startswith('MainActivity'):
+                act_path = os.path.join(root, file)
+                with open(act_path, 'r', encoding='utf-8') as f:
+                    act_content = f.read()
+                act_content = act_content.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterFragmentActivity')
+                act_content = act_content.replace(': FlutterActivity()', ': FlutterFragmentActivity()')
+                act_content = act_content.replace('extends FlutterActivity', 'extends FlutterFragmentActivity')
+                with open(act_path, 'w', encoding='utf-8') as f:
+                    f.write(act_content)
+                print(f"Updated {act_path} to use FlutterFragmentActivity for biometrics")
 
 if __name__ == '__main__':
     generate_icons()
