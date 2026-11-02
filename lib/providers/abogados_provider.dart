@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/pget_tab.dart';
 import '../models/abogado_pget.dart';
 import '../models/causa_judicial.dart';
@@ -616,6 +617,29 @@ class AbogadosProvider with ChangeNotifier {
   AbogadoPGET? get usuarioAutenticado => _usuarioAutenticado;
   bool get isAuthenticated => _usuarioAutenticado != null;
 
+  /// Verificar si existe una sesión activa persistida en el dispositivo
+  Future<bool> verificarSesionGuardada() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('pget_active_session_email');
+      if (savedEmail != null && savedEmail.isNotEmpty) {
+        final c = savedEmail.trim().toLowerCase();
+        for (final a in _abogados) {
+          if (a.correo.toLowerCase() == c) {
+            _usuarioAutenticado = a;
+            _isAdminMode = (a.rol == 'admin');
+            _abogadoSesion = a;
+            notifyListeners();
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error verificando sesión guardada: $e');
+    }
+    return false;
+  }
+
   bool login(String correo, String clave) {
     final c = correo.trim().toLowerCase();
     for (final a in _abogados) {
@@ -623,6 +647,12 @@ class AbogadosProvider with ChangeNotifier {
         _usuarioAutenticado = a;
         _isAdminMode = (a.rol == 'admin');
         _abogadoSesion = a;
+        // Guardar sesión activa en el dispositivo
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('pget_active_session_email', a.correo);
+          prefs.setString('pget_active_session_name', a.nombre);
+        }).catchError((_) {});
+
         registrarAuditoria(
           accion: 'LOGIN',
           expediente: 'AUTENTICACIÓN',
@@ -644,6 +674,12 @@ class AbogadosProvider with ChangeNotifier {
         _usuarioAutenticado = a;
         _isAdminMode = (a.rol == 'admin');
         _abogadoSesion = a;
+        // Guardar sesión activa en el dispositivo
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('pget_active_session_email', a.correo);
+          prefs.setString('pget_active_session_name', a.nombre);
+        }).catchError((_) {});
+
         registrarAuditoria(
           accion: 'LOGIN BIOMÉTRICO',
           expediente: 'HUELLA DACTILAR',
@@ -658,8 +694,13 @@ class AbogadosProvider with ChangeNotifier {
     return false;
   }
 
-  void logout() {
+  Future<void> logout() async {
     _usuarioAutenticado = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('pget_active_session_email');
+      await prefs.remove('pget_active_session_name');
+    } catch (_) {}
     notifyListeners();
   }
 

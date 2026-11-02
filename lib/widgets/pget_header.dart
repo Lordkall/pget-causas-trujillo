@@ -141,8 +141,8 @@ class PgetAppHeader extends StatelessWidget {
                       IconButton(
                         icon: const Icon(Icons.logout, color: Colors.white, size: 19),
                         tooltip: 'Cerrar Sesión',
-                        onPressed: () {
-                          provider.logout();
+                        onPressed: () async {
+                          await provider.logout();
                         },
                       ),
                     ],

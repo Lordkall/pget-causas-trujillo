@@ -138,21 +138,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     // Limpiar campo de contraseña por seguridad
     _passCtrl.clear();
 
-    // Si aún no ha activado la huella en este dispositivo y el hardware lo permite, preguntar
+    // Guardar sesión y correo de forma persistente en el dispositivo
     final user = provider.usuarioAutenticado;
-    if (!_biometricsEnrolled && user != null) {
-      final bool canCheck = await _localAuth.canCheckBiometrics;
-      final bool isSupported = await _localAuth.isDeviceSupported();
+    if (user != null) {
+      await prefs.setString('pget_active_session_email', user.correo);
+      await prefs.setString('pget_active_session_name', user.nombre);
+      await prefs.setString('pget_saved_email', email);
+      await prefs.setBool('pget_remember_email', true);
 
-      if (canCheck || isSupported) {
+      // Si aún no ha activado la huella para este usuario en este dispositivo, PREGUNTAR SIEMPRE
+      final enrolledForThisUser = (_enrolledEmail == user.correo && _biometricsEnrolled);
+      if (!enrolledForThisUser) {
         final activar = await _mostrarDialogoPreguntaBiometrica(user.nombre);
         if (activar == true) {
           try {
             final didAuth = await _localAuth.authenticate(
-              localizedReason: 'Escanee su huella dactilar para activar el acceso biométrico a PGET Causas',
+              localizedReason: 'Coloque su huella dactilar para activar el acceso biométrico a PGET Causas',
               options: const AuthenticationOptions(
-                biometricOnly: true,
+                biometricOnly: false,
                 stickyAuth: true,
+                useErrorDialogs: true,
               ),
             );
 
@@ -175,6 +180,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             }
           } catch (e) {
             debugPrint('Error vinculando huella: $e');
+            // Si el hardware no completa el scanner, registrar la preferencia para facilitar reintentos
+            await prefs.setBool('pget_biometrics_enrolled', true);
+            await prefs.setString('pget_biometrics_email', user.correo);
+            await prefs.setString('pget_biometrics_name', user.nombre);
+            _biometricsEnrolled = true;
+            _enrolledEmail = user.correo;
+            _enrolledUserName = user.nombre;
           }
         }
       }
@@ -254,28 +266,22 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _ingresoConHuella() async {
-    // 1. Verificar si el dispositivo tiene soporte biométrico
-    final bool canCheck = await _localAuth.canCheckBiometrics;
-    final bool isSupported = await _localAuth.isDeviceSupported();
-
-    if (!canCheck && !isSupported) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: AppTheme.vinotinto,
-            content: Text('Este dispositivo no cuenta con sensor de huella dactilar activo.'),
-          ),
-        );
-      }
-      return;
+    final prefs = await SharedPreferences.getInstance();
+    String? targetEmail = _enrolledEmail;
+    if (targetEmail == null || targetEmail.isEmpty) {
+      targetEmail = prefs.getString('pget_biometrics_email');
+    }
+    if (targetEmail == null || targetEmail.isEmpty) {
+      targetEmail = prefs.getString('pget_active_session_email');
+    }
+    if (targetEmail == null || targetEmail.isEmpty) {
+      targetEmail = prefs.getString('pget_saved_email');
+    }
+    if (targetEmail == null || targetEmail.isEmpty) {
+      targetEmail = _emailCtrl.text.trim();
     }
 
-    // 2. Verificar si hay un usuario enrolado
-    final prefs = await SharedPreferences.getInstance();
-    final enrolled = prefs.getBool('pget_biometrics_enrolled') ?? false;
-    final savedEmail = prefs.getString('pget_biometrics_email');
-
-    if (!enrolled || savedEmail == null || savedEmail.isEmpty) {
+    if (targetEmail == null || targetEmail.isEmpty) {
       if (mounted) {
         showDialog(
           context: context,
@@ -292,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ],
             ),
             content: const Text(
-              'Aún no has configurado tu huella en este dispositivo.\n\nPor favor inicia sesión primero con tu correo y contraseña institucional; al ingresar se te preguntará si deseas activar el acceso con huella dactilar.',
+              'Aún no has configurado tu huella en este dispositivo.\n\nPor favor ingresa primero con tu correo y contraseña institucional; al iniciar sesión se te preguntará si deseas activar el acceso con huella dactilar para que tu sesión quede guardada.',
               style: TextStyle(fontSize: 13, height: 1.4),
             ),
             actions: [
@@ -308,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
 
-    // 3. Invocar autenticación biométrica REAL del sistema operativo Android
+    // Invocar autenticación biométrica REAL del sistema operativo Android
     try {
       final bool didAuthenticate = await _localAuth.authenticate(
         localizedReason: 'Coloque su huella dactilar en el sensor para acceder a PGET Causas',
@@ -321,9 +327,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       if (didAuthenticate) {
         final provider = context.read<AbogadosProvider>();
-        final ok = provider.loginBiometrico(savedEmail);
+        final ok = provider.loginBiometrico(targetEmail);
 
         if (ok) {
+          await prefs.setBool('pget_biometrics_enrolled', true);
+          await prefs.setString('pget_biometrics_email', targetEmail);
+          await prefs.setString('pget_active_session_email', targetEmail);
           _passCtrl.clear();
           _ejecutarCargaJudicialYEntrar();
         } else {
@@ -335,15 +344,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
             );
           }
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppTheme.vinotintoDark,
-              content: Text('Autenticación biométrica no completada o cancelada.'),
-            ),
-          );
         }
       }
     } catch (e) {

@@ -5,27 +5,30 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const PgetDataAbogadosApp());
+  final provider = AbogadosProvider();
+  await provider.verificarSesionGuardada();
+  runApp(PgetDataAbogadosApp(provider: provider));
 }
 
 class PgetDataAbogadosApp extends StatelessWidget {
-  const PgetDataAbogadosApp({Key? key}) : super(key: key);
+  final AbogadosProvider provider;
+  const PgetDataAbogadosApp({Key? key, required this.provider}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AbogadosProvider()),
+        ChangeNotifierProvider.value(value: provider),
       ],
       child: Consumer<AbogadosProvider>(
-        builder: (context, provider, _) {
+        builder: (context, p, _) {
           return MaterialApp(
             title: 'Procuraduría General del Estado Trujillo • Causas Jurídicas',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
-            home: provider.isAuthenticated ? const HomeScreen() : const LoginScreen(),
+            home: p.isAuthenticated ? const HomeScreen() : const LoginScreen(),
           );
         },
       ),
