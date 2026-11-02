@@ -34,5 +34,17 @@ class AuditoriaRegistro {
       'detalle': detalle,
     };
   }
+
+  factory AuditoriaRegistro.fromMap(Map<String, dynamic> map) {
+    return AuditoriaRegistro(
+      id: map['id'] ?? '',
+      fechaHora: map['fechaHora'] != null ? DateTime.tryParse(map['fechaHora']) : null,
+      usuario: map['usuario'] ?? '',
+      accion: map['accion'] ?? '',
+      expediente: map['expediente'] ?? '',
+      pestana: map['pestana'] ?? '',
+      detalle: map['detalle'] ?? '',
+    );
+  }
 }
 

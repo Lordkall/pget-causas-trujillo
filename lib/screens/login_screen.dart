@@ -113,9 +113,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
 
     final provider = context.read<AbogadosProvider>();
-    final ok = provider.login(email, pass);
+    // 1. Validar credenciales de forma aislada SIN notificar aún para no desmontar la pantalla de Login
+    final user = provider.validarCredenciales(email, pass);
 
-    if (!ok) {
+    if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: AppTheme.vinotinto,
@@ -135,64 +136,63 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await prefs.remove('pget_saved_email');
     }
 
-    // Limpiar campo de contraseña por seguridad
+    // Limpiar campo de contraseña por seguridad institucional
     _passCtrl.clear();
 
-    // Guardar sesión y correo de forma persistente en el dispositivo
-    final user = provider.usuarioAutenticado;
-    if (user != null) {
-      await prefs.setString('pget_active_session_email', user.correo);
-      await prefs.setString('pget_active_session_name', user.nombre);
-      await prefs.setString('pget_saved_email', email);
-      await prefs.setBool('pget_remember_email', true);
+    // Guardar correo e inicio persistente
+    await prefs.setString('pget_saved_email', email);
+    await prefs.setBool('pget_remember_email', true);
 
-      // Si aún no ha activado la huella para este usuario en este dispositivo, PREGUNTAR SIEMPRE
-      final enrolledForThisUser = (_enrolledEmail == user.correo && _biometricsEnrolled);
-      if (!enrolledForThisUser) {
-        final activar = await _mostrarDialogoPreguntaBiometrica(user.nombre);
-        if (activar == true) {
-          try {
-            final didAuth = await _localAuth.authenticate(
-              localizedReason: 'Coloque su huella dactilar para activar el acceso biométrico a PGET Causas',
-              options: const AuthenticationOptions(
-                biometricOnly: false,
-                stickyAuth: true,
-                useErrorDialogs: true,
-              ),
-            );
+    // 2. Preguntar SIEMPRE si desea activar la huella si aún no la tiene enrolada para este usuario
+    final isEnrolled = prefs.getBool('pget_biometrics_enrolled') ?? false;
+    final bEmail = prefs.getString('pget_biometrics_email');
+    final enrolledForThisUser = (bEmail == user.correo && isEnrolled);
 
-            if (didAuth) {
-              await prefs.setBool('pget_biometrics_enrolled', true);
-              await prefs.setString('pget_biometrics_email', user.correo);
-              await prefs.setString('pget_biometrics_name', user.nombre);
-              _biometricsEnrolled = true;
-              _enrolledEmail = user.correo;
-              _enrolledUserName = user.nombre;
+    if (!enrolledForThisUser) {
+      final activar = await _mostrarDialogoPreguntaBiometrica(user.nombre);
+      if (activar == true) {
+        try {
+          final didAuth = await _localAuth.authenticate(
+            localizedReason: 'Coloque su huella dactilar para activar el acceso biométrico a PGET Causas',
+            options: const AuthenticationOptions(
+              biometricOnly: false,
+              stickyAuth: true,
+              useErrorDialogs: true,
+            ),
+          );
 
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: AppTheme.vinotintoDark,
-                    content: Text('¡Huella dactilar vinculada con éxito para ${user.nombre}!'),
-                  ),
-                );
-              }
-            }
-          } catch (e) {
-            debugPrint('Error vinculando huella: $e');
-            // Si el hardware no completa el scanner, registrar la preferencia para facilitar reintentos
+          if (didAuth) {
             await prefs.setBool('pget_biometrics_enrolled', true);
             await prefs.setString('pget_biometrics_email', user.correo);
             await prefs.setString('pget_biometrics_name', user.nombre);
             _biometricsEnrolled = true;
             _enrolledEmail = user.correo;
             _enrolledUserName = user.nombre;
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: AppTheme.vinotintoDark,
+                  content: Text('¡Huella dactilar vinculada con éxito para ${user.nombre}!'),
+                ),
+              );
+            }
           }
+        } catch (e) {
+          debugPrint('Error vinculando huella: $e');
+          // En caso de sensores ópticos MIUI/HyperOS, registrar enrolamiento como fallback
+          await prefs.setBool('pget_biometrics_enrolled', true);
+          await prefs.setString('pget_biometrics_email', user.correo);
+          await prefs.setString('pget_biometrics_name', user.nombre);
+          _biometricsEnrolled = true;
+          _enrolledEmail = user.correo;
+          _enrolledUserName = user.nombre;
         }
       }
     }
 
-    _ejecutarCargaJudicialYEntrar();
+    // 3. Ejecutar la animación judicial del mazo de 1.5s y formalizar sesión
+    await _ejecutarCargaJudicialYEntrar(user, esBiometrico: false);
   }
 
   Future<bool?> _mostrarDialogoPreguntaBiometrica(String nombre) {
@@ -314,6 +314,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
 
+    final provider = context.read<AbogadosProvider>();
+    final user = provider.buscarAbogadoPorCorreo(targetEmail);
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: AppTheme.vinotinto,
+            content: Text('No se encontró abogado registrado para este usuario biométrico.'),
+          ),
+        );
+      }
+      return;
+    }
+
     // Invocar autenticación biométrica REAL del sistema operativo Android
     try {
       final bool didAuthenticate = await _localAuth.authenticate(
@@ -326,25 +340,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       );
 
       if (didAuthenticate) {
-        final provider = context.read<AbogadosProvider>();
-        final ok = provider.loginBiometrico(targetEmail);
-
-        if (ok) {
-          await prefs.setBool('pget_biometrics_enrolled', true);
-          await prefs.setString('pget_biometrics_email', targetEmail);
-          await prefs.setString('pget_active_session_email', targetEmail);
-          _passCtrl.clear();
-          _ejecutarCargaJudicialYEntrar();
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                backgroundColor: AppTheme.vinotinto,
-                content: Text('No se pudo autenticar el usuario vinculado a la huella dactilar.'),
-              ),
-            );
-          }
-        }
+        await prefs.setBool('pget_biometrics_enrolled', true);
+        await prefs.setString('pget_biometrics_email', targetEmail);
+        await prefs.setString('pget_active_session_email', targetEmail);
+        _passCtrl.clear();
+        await _ejecutarCargaJudicialYEntrar(user, esBiometrico: true);
       }
     } catch (e) {
       debugPrint('Error en sensor biométrico: $e');
@@ -359,19 +359,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _ejecutarCargaJudicialYEntrar() async {
+  Future<void> _ejecutarCargaJudicialYEntrar(AbogadoPGET user, {bool esBiometrico = false}) async {
     setState(() => _isLoading = true);
     _gavelAnimCtrl.repeat();
 
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // Iniciar carga de datos de causas jurídicas y sincronizar con animación de 1.5s
+    final provider = context.read<AbogadosProvider>();
+    await Future.wait([
+      provider.cargarCausasGoogleSheets(forzar: false),
+      Future.delayed(const Duration(milliseconds: 1500)),
+    ]);
 
     if (!mounted) return;
     _gavelAnimCtrl.stop();
     setState(() => _isLoading = false);
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
+    // Establecer la sesión activa oficialmente: notifyListeners actualizará MaterialApp a HomeScreen
+    provider.establecerSesion(user, esBiometrico: esBiometrico);
   }
 
   @override

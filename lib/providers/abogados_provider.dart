@@ -70,8 +70,18 @@ class AbogadosProvider with ChangeNotifier {
         return false;
       }
     }
-    if (nonBlank.length >= 3 && joined.contains('TRIBUNAL') && (joined.contains('DEMANDANTE') || joined.contains('QUERELLANTE'))) {
-      return false;
+    // Descartar únicamente filas que sean verdaderos encabezados de columnas repetidos en la hoja
+    if (nonBlank.length >= 4) {
+      final allShort = nonBlank.every((c) => c.toString().trim().length < 40);
+      if (allShort) {
+        final upperList = nonBlank.map((c) => c.toString().trim().toUpperCase()).toList();
+        final hasDemandante = upperList.any((c) => c.contains('DEMANDANTE') || c.contains('QUERELLANTE'));
+        final hasDemandado = upperList.any((c) => c.contains('DEMANDADO') || c.contains('QUERELLADO'));
+        final hasExpediente = upperList.any((c) => c.contains('EXPEDIENTE') || c.contains('ASUNTO'));
+        if (hasDemandante && (hasDemandado || hasExpediente)) {
+          return false;
+        }
+      }
     }
     return true;
   }
@@ -137,8 +147,7 @@ class AbogadosProvider with ChangeNotifier {
         year = _cleanYear(row[expIdx]);
       }
       if (year == null) {
-        final limit = row.length < 8 ? row.length : 8;
-        for (int c = 0; c < limit; c++) {
+        for (int c = 0; c < row.length; c++) {
           year = _cleanYear(row[c]);
           if (year != null) break;
         }
@@ -157,6 +166,24 @@ class AbogadosProvider with ChangeNotifier {
       return _rowYearMap[idx];
     }
     return _extractYearFromRow(row);
+  }
+
+  String? _extractYearFromRow(List<dynamic> row) {
+    final fecIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('FECHA'));
+    if (fecIdx != -1 && fecIdx < row.length) {
+      final y = _cleanYear(row[fecIdx]);
+      if (y != null) return y;
+    }
+    final expIdx = _currentTab.columns.indexWhere((c) => c.toUpperCase().contains('EXPEDIENTE') || c.toUpperCase().contains('INVESTIGACION'));
+    if (expIdx != -1 && expIdx < row.length) {
+      final y = _cleanYear(row[expIdx]);
+      if (y != null) return y;
+    }
+    for (int c = 0; c < row.length; c++) {
+      final y = _cleanYear(row[c]);
+      if (y != null) return y;
+    }
+    return null;
   }
 
   /// Retorna las causas mapeadas como objetos CausaJudicial usando la estructura de la pestaña activa
@@ -285,11 +312,19 @@ class AbogadosProvider with ChangeNotifier {
       final row = _currentTabRows[i];
       if (!_isValidCause(row)) continue;
 
-      // 1. Filtro de Estado
+      // 1. Filtro de Estado (Tolera variaciones de género y acentuación en español)
       if (_selectedEstadoFilter != 'TODAS' && estIdx != -1) {
         if (row.length > estIdx) {
           final estadoFila = row[estIdx].toString().toUpperCase();
-          if (!estadoFila.contains(_selectedEstadoFilter.toUpperCase())) {
+          if (_selectedEstadoFilter == 'ACTIVA' && !estadoFila.contains('ACTIV')) {
+            continue;
+          } else if (_selectedEstadoFilter == 'CERRADA' && !estadoFila.contains('CERRAD')) {
+            continue;
+          } else if (_selectedEstadoFilter.contains('TRAMITE') || _selectedEstadoFilter.contains('TRÁMITE')) {
+            if (!estadoFila.contains('TRAMIT') && !estadoFila.contains('TRÁMIT')) {
+              continue;
+            }
+          } else if (!estadoFila.contains(_selectedEstadoFilter.toUpperCase())) {
             continue;
           }
         }
@@ -529,17 +564,19 @@ class AbogadosProvider with ChangeNotifier {
     String? usuario,
   }) {
     final u = usuario ?? (_isAdminMode ? 'Administrador PGET' : (_abogadoSesion?.nombre ?? 'Abogado PGET'));
-    _auditoriaLogs.insert(
-      0,
-      AuditoriaRegistro(
-        id: 'AUD-${DateTime.now().millisecondsSinceEpoch}',
-        usuario: u,
-        accion: accion,
-        expediente: expediente,
-        pestana: pestana,
-        detalle: detalle,
-      ),
+    final nuevoLog = AuditoriaRegistro(
+      id: 'AUD-${DateTime.now().millisecondsSinceEpoch}',
+      usuario: u,
+      accion: accion,
+      expediente: expediente,
+      pestana: pestana,
+      detalle: detalle,
     );
+    _auditoriaLogs.insert(0, nuevoLog);
+    SharedPreferences.getInstance().then((prefs) {
+      final encoded = jsonEncode(_auditoriaLogs.take(100).map((e) => e.toMap()).toList());
+      prefs.setString('pget_auditoria_logs', encoded);
+    }).catchError((_) {});
     notifyListeners();
   }
 
@@ -617,21 +654,68 @@ class AbogadosProvider with ChangeNotifier {
   AbogadoPGET? get usuarioAutenticado => _usuarioAutenticado;
   bool get isAuthenticated => _usuarioAutenticado != null;
 
+  /// Busca un abogado registrado por su correo electrónico institucional
+  AbogadoPGET? buscarAbogadoPorCorreo(String correo) {
+    final c = correo.trim().toLowerCase();
+    for (final a in _abogados) {
+      if (a.correo.trim().toLowerCase() == c) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  /// Valida credenciales sin disparar notifyListeners para permitir mostrar
+  /// el diálogo de huella dactilar y la animación del mazo en pantalla
+  AbogadoPGET? validarCredenciales(String correo, String clave) {
+    final c = correo.trim().toLowerCase();
+    final p = clave.trim();
+    for (final a in _abogados) {
+      if (a.correo.trim().toLowerCase() == c && a.clave == p) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  /// Establece formalmente la sesión activa, persiste los tokens y notifica
+  void establecerSesion(AbogadoPGET a, {bool esBiometrico = false}) {
+    _usuarioAutenticado = a;
+    _isAdminMode = (a.rol == 'admin');
+    _abogadoSesion = a;
+
+    // Guardar sesión activa en el dispositivo de forma persistente
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('pget_active_session_email', a.correo);
+      prefs.setString('pget_active_session_name', a.nombre);
+    }).catchError((_) {});
+
+    registrarAuditoria(
+      accion: esBiometrico ? 'LOGIN BIOMÉTRICO' : 'LOGIN',
+      expediente: esBiometrico ? 'HUELLA DACTILAR' : 'AUTENTICACIÓN',
+      pestana: 'SEGURIDAD',
+      detalle: esBiometrico
+          ? 'Acceso validado por sensor biométrico: ${a.nombre} (${a.rol.toUpperCase()}).'
+          : 'Inicio de sesión exitoso: ${a.nombre} (${a.rol.toUpperCase()}).',
+      usuario: a.nombre,
+    );
+
+    notifyListeners();
+  }
+
   /// Verificar si existe una sesión activa persistida en el dispositivo
   Future<bool> verificarSesionGuardada() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedEmail = prefs.getString('pget_active_session_email');
       if (savedEmail != null && savedEmail.isNotEmpty) {
-        final c = savedEmail.trim().toLowerCase();
-        for (final a in _abogados) {
-          if (a.correo.toLowerCase() == c) {
-            _usuarioAutenticado = a;
-            _isAdminMode = (a.rol == 'admin');
-            _abogadoSesion = a;
-            notifyListeners();
-            return true;
-          }
+        final a = buscarAbogadoPorCorreo(savedEmail);
+        if (a != null) {
+          _usuarioAutenticado = a;
+          _isAdminMode = (a.rol == 'admin');
+          _abogadoSesion = a;
+          notifyListeners();
+          return true;
         }
       }
     } catch (e) {
@@ -641,55 +725,19 @@ class AbogadosProvider with ChangeNotifier {
   }
 
   bool login(String correo, String clave) {
-    final c = correo.trim().toLowerCase();
-    for (final a in _abogados) {
-      if (a.correo.toLowerCase() == c && a.clave == clave) {
-        _usuarioAutenticado = a;
-        _isAdminMode = (a.rol == 'admin');
-        _abogadoSesion = a;
-        // Guardar sesión activa en el dispositivo
-        SharedPreferences.getInstance().then((prefs) {
-          prefs.setString('pget_active_session_email', a.correo);
-          prefs.setString('pget_active_session_name', a.nombre);
-        }).catchError((_) {});
-
-        registrarAuditoria(
-          accion: 'LOGIN',
-          expediente: 'AUTENTICACIÓN',
-          pestana: 'SEGURIDAD',
-          detalle: 'Inicio de sesión exitoso: ${a.nombre} (${a.rol.toUpperCase()}).',
-          usuario: a.nombre,
-        );
-        notifyListeners();
-        return true;
-      }
+    final a = validarCredenciales(correo, clave);
+    if (a != null) {
+      establecerSesion(a, esBiometrico: false);
+      return true;
     }
     return false;
   }
 
   bool loginBiometrico(String correo) {
-    final c = correo.trim().toLowerCase();
-    for (final a in _abogados) {
-      if (a.correo.toLowerCase() == c) {
-        _usuarioAutenticado = a;
-        _isAdminMode = (a.rol == 'admin');
-        _abogadoSesion = a;
-        // Guardar sesión activa en el dispositivo
-        SharedPreferences.getInstance().then((prefs) {
-          prefs.setString('pget_active_session_email', a.correo);
-          prefs.setString('pget_active_session_name', a.nombre);
-        }).catchError((_) {});
-
-        registrarAuditoria(
-          accion: 'LOGIN BIOMÉTRICO',
-          expediente: 'HUELLA DACTILAR',
-          pestana: 'SEGURIDAD',
-          detalle: 'Acceso validado por sensor biométrico: ${a.nombre} (${a.rol.toUpperCase()}).',
-          usuario: a.nombre,
-        );
-        notifyListeners();
-        return true;
-      }
+    final a = buscarAbogadoPorCorreo(correo);
+    if (a != null) {
+      establecerSesion(a, esBiometrico: true);
+      return true;
     }
     return false;
   }
@@ -746,34 +794,19 @@ class AbogadosProvider with ChangeNotifier {
   }
 
   void _initAuditoriaBase() {
-    _auditoriaLogs = [
-      AuditoriaRegistro(
-        id: 'AUD-001',
-        fechaHora: DateTime.now().subtract(const Duration(hours: 2)),
-        usuario: 'Samantha Polanco',
-        accion: 'NUEVA ACTUACIÓN PROCESAL',
-        expediente: '11.114',
-        pestana: 'JUZGADOS DE MUNICIPIOS ORDINARI',
-        detalle: 'Se agregó auto de notificación y revisión de lapso procesal en la causa.',
-      ),
-      AuditoriaRegistro(
-        id: 'AUD-002',
-        fechaHora: DateTime.now().subtract(const Duration(hours: 5)),
-        usuario: 'Admin PGET',
-        accion: 'ALTA DE ABOGADO',
-        expediente: 'NÓMINA',
-        pestana: 'ADMINISTRACIÓN',
-        detalle: 'Se incorporó a Kleiver Briceño como abogado activo en Contencioso.',
-      ),
-      AuditoriaRegistro(
-        id: 'AUD-003',
-        fechaHora: DateTime.now().subtract(const Duration(days: 1)),
-        usuario: 'Diana Faria',
-        accion: 'CREACIÓN DE CAUSA',
-        expediente: '295-2015',
-        pestana: 'JUZGADOS DE MUNICIPIOS ORDINARI',
-        detalle: 'Apertura de expediente por recurso contra Domesa.',
-      ),
-    ];
+    // Inicializar lista limpia sin registros ficticios de prueba
+    _auditoriaLogs = [];
+    SharedPreferences.getInstance().then((prefs) {
+      final jsonStr = prefs.getString('pget_auditoria_logs');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        try {
+          final List<dynamic> list = jsonDecode(jsonStr);
+          _auditoriaLogs = list.map((e) => AuditoriaRegistro.fromMap(e)).toList();
+          notifyListeners();
+        } catch (e) {
+          debugPrint('Error cargando historial de auditoría real: $e');
+        }
+      }
+    }).catchError((_) {});
   }
 }
