@@ -272,9 +272,12 @@ class GoogleSheetsService {
         // Las filas de datos inician después de la fila de encabezados (headerRow + 1)
         final startRow = tab.headerRow + 1;
         final rows = await ws.values.allRows(fromRow: startRow);
-        final validRows = rows.where((r) => r.isNotEmpty && r.any((val) => val.toString().trim().isNotEmpty)).toList();
+        final validRows = rows
+            .where((r) => r.isNotEmpty && r.any((val) => val.toString().trim().isNotEmpty))
+            .map<List<dynamic>>((r) => List<dynamic>.from(r))
+            .toList();
         if (validRows.isNotEmpty) {
-          return validRows;
+          return List<List<dynamic>>.from(validRows);
         }
       }
     } catch (e) {

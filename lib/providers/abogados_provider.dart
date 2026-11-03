@@ -344,7 +344,7 @@ class AbogadosProvider with ChangeNotifier {
 
     try {
       final rows = await _sheetsService.getRowsForTab(_currentTab);
-      _currentTabRows = rows;
+      _currentTabRows = rows.map<List<dynamic>>((r) => List<dynamic>.from(r)).toList();
       _recomputeRowYears();
     } catch (e) {
       _errorMessage = e.toString();
@@ -364,7 +364,7 @@ class AbogadosProvider with ChangeNotifier {
       await _sheetsService.insertRowForTab(tab, valores);
 
       if (tab.title == _currentTab.title) {
-        _currentTabRows.insert(0, valores);
+        _currentTabRows.insert(0, List<dynamic>.from(valores));
         _recomputeRowYears();
       }
 
@@ -476,7 +476,7 @@ class AbogadosProvider with ChangeNotifier {
       await _sheetsService.updateRowForTab(tab, sheetRowNumber, nuevosValores);
 
       if (tab.title == _currentTab.title && realIndex >= 0 && realIndex < _currentTabRows.length) {
-        _currentTabRows[realIndex] = nuevosValores;
+        _currentTabRows[realIndex] = List<dynamic>.from(nuevosValores);
         _recomputeRowYears();
       }
 
