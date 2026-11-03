@@ -8,3 +8,10 @@ String get pgetOfficialCredentialsJson {
   final bytes = base64.decode(_pgetEncodedCreds);
   return utf8.decode(bytes);
 }
+
+
+Map<String, dynamic> get pgetOfficialCredentialsMap {
+  final bytes = base64.decode(_pgetEncodedCreds);
+  final jsonString = utf8.decode(bytes);
+  return json.decode(jsonString) as Map<String, dynamic>;
+}

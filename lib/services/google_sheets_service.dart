@@ -12,40 +12,42 @@ class GoogleSheetsService {
   Spreadsheet? _spreadsheet;
   bool _isInitialized = false;
   Map<String, dynamic>? _cachedRowsMap;
+  String? _lastError;
 
   bool get isInitialized => _isInitialized;
+  String? get lastError => _lastError;
 
   /// Inicializa la conexión con Google Sheets usando las credenciales oficiales de la PGET
   Future<bool> init() async {
     if (_isInitialized && _spreadsheet != null) return true;
 
     try {
-      String credsString = pgetOfficialCredentialsJson;
-
-      // Respaldo secundario desde assets/pget_sa.enc si estuviese disponible
-      if (credsString.isEmpty || !credsString.contains('private_key')) {
-        try {
-          final encData = await rootBundle.loadString('assets/pget_sa.enc');
-          final cleanBase64 = encData.replaceAll('\r', '').replaceAll('\n', '').trim();
-          final decodedBytes = base64.decode(cleanBase64);
-          credsString = utf8.decode(decodedBytes);
-        } catch (e) {
-          debugPrint("Notice: could not load pget_sa.enc: $e");
-        }
+      dynamic creds;
+      try {
+        creds = pgetOfficialCredentialsMap;
+      } catch (_) {
+        final encData = await rootBundle.loadString('assets/pget_sa.enc');
+        final cleanBase64 = encData.replaceAll('\r', '').replaceAll('\n', '').trim();
+        final decodedBytes = base64.decode(cleanBase64);
+        creds = json.decode(utf8.decode(decodedBytes));
       }
 
-      if (credsString.isNotEmpty && credsString.contains('private_key')) {
-        _gsheets = GSheets(credsString);
-        _spreadsheet = await _gsheets!.spreadsheet(spreadsheetId);
-        _isInitialized = true;
-        return true;
+      _gsheets = GSheets(creds);
+      _spreadsheet = await _gsheets!.spreadsheet(spreadsheetId);
+
+      if (_spreadsheet == null) {
+        _lastError = "Google Sheets devolvió null para el ID del documento.";
+        _isInitialized = false;
+        return false;
       }
 
+      _isInitialized = true;
+      _lastError = null;
+      return true;
+    } catch (e, stack) {
       _isInitialized = false;
-      return false;
-    } catch (e) {
-      _isInitialized = false;
-      debugPrint("Error initializing GSheets live connection: $e");
+      _lastError = e.toString();
+      debugPrint("Error initializing GSheets live connection: $e\n$stack");
       return false;
     }
   }
@@ -140,7 +142,10 @@ class GoogleSheetsService {
   /// Obtiene una pestaña específica por su GID o Título
   Future<Worksheet?> getWorksheet(PgetTab tab) async {
     final ok = await init();
-    if (!ok || _spreadsheet == null) return null;
+    if (!ok || _spreadsheet == null) {
+      _lastError ??= "No se pudo establecer la conexión remota con Google Sheets";
+      return null;
+    }
 
     try {
       // 1. Búsqueda por ID numérico (GID)
@@ -159,6 +164,7 @@ class GoogleSheetsService {
         orElse: () => sheets.first,
       );
     } catch (e) {
+      _lastError = "Error al localizar la pestaña ${tab.title}: $e";
       debugPrint("Error finding worksheet ${tab.title}: $e");
       return null;
     }
@@ -213,7 +219,7 @@ class GoogleSheetsService {
   Future<bool> insertRowForTab(PgetTab tab, List<dynamic> rowValues, {int? causeYear}) async {
     final ws = await getWorksheet(tab);
     if (ws == null) {
-      throw Exception("No se pudo conectar a Google Sheets. Verifique la conexión a internet.");
+      throw Exception("No se pudo conectar a Google Sheets: ${_lastError ?? 'compruebe su conexión a internet'}");
     }
 
     final targetYear = causeYear ?? _extractYearFromRow(rowValues) ?? DateTime.now().year;
@@ -287,7 +293,7 @@ class GoogleSheetsService {
   Future<bool> updateRowForTab(PgetTab tab, int rowIndex, List<dynamic> rowValues) async {
     final ws = await getWorksheet(tab);
     if (ws == null) {
-      throw Exception("No se pudo conectar a Google Sheets para actualizar.");
+      throw Exception("No se pudo conectar a Google Sheets: ${_lastError ?? 'compruebe su conexión a internet'}");
     }
 
     try {
