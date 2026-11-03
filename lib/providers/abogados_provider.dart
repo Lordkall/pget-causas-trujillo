@@ -365,6 +365,7 @@ class AbogadosProvider with ChangeNotifier {
 
       if (tab.title == _currentTab.title) {
         _currentTabRows.insert(0, valores);
+        _recomputeRowYears();
       }
 
       // Registro de Auditoría
@@ -476,6 +477,7 @@ class AbogadosProvider with ChangeNotifier {
 
       if (tab.title == _currentTab.title && realIndex >= 0 && realIndex < _currentTabRows.length) {
         _currentTabRows[realIndex] = nuevosValores;
+        _recomputeRowYears();
       }
 
       final usuario = _isAdminMode ? 'Administrador PGET' : (_abogadoSesion?.nombre ?? 'Abogado PGET');
@@ -516,6 +518,7 @@ class AbogadosProvider with ChangeNotifier {
 
       if (realIndex >= 0 && realIndex < _currentTabRows.length) {
         _currentTabRows.removeAt(realIndex);
+        _recomputeRowYears();
       }
 
       final usuario = _isAdminMode ? 'Administrador PGET' : (_abogadoSesion?.nombre ?? 'Abogado PGET');
