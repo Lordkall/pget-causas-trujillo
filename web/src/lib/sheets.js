@@ -237,6 +237,37 @@ export async function deleteRowForTab(tab, { rowIndex, expediente }) {
   return { ok: false, error: 'Fila no encontrada en Google Sheets' };
 }
 
+export async function updateRowForTab(tab, { rowIndex, expediente, rowValues }) {
+  const sheets = await getSheetsClient();
+  let targetRow = rowIndex;
+
+  if (expediente) {
+    const allRows = await getRowsForTab(tab.title, 1);
+    const expQuery = String(expediente).trim().toUpperCase();
+    for (let i = 0; i < allRows.length; i++) {
+      const line = (allRows[i] || []).join(' ').toUpperCase();
+      if (line.includes(expQuery)) {
+        targetRow = i + 1; // 1-based index
+        break;
+      }
+    }
+  }
+
+  if (targetRow && targetRow > tab.headerRow) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'${tab.title}'!A${targetRow}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [rowValues],
+      },
+    });
+    await formatCauseRow(sheets, tab.gid, targetRow, rowValues.length);
+    return { ok: true, updatedRow: targetRow };
+  }
+  return { ok: false, error: 'Fila no encontrada en Google Sheets' };
+}
+
 async function formatBanner(sheets, sheetId, rowNumber, columnCount) {
   try {
     const cols = columnCount > 0 ? columnCount : 20;

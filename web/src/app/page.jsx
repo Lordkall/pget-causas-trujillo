@@ -7,7 +7,7 @@ import { ABOGADOS_PGET } from '@/lib/abogadosData';
 import { 
   Search, Plus, ShieldCheck, Scale, Calendar, Users, 
   FolderCheck, FolderClock, LogOut, Share, X, CheckCircle, 
-  AlertCircle, ChevronDown, RefreshCw
+  AlertCircle, ChevronDown, RefreshCw, Trash2, Edit3
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -24,8 +24,9 @@ export default function HomePage() {
   const [estadoFilter, setEstadoFilter] = useState('TODAS');
   const [yearFilter, setYearFilter] = useState('TODOS');
 
-  // Modal Crear Causa
+  // Modal Crear/Editar Causa
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingCause, setEditingCause] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -196,7 +197,7 @@ export default function HomePage() {
     setShowLoginModal(true);
   }
 
-  // Guardar nueva causa
+  // Guardar o Actualizar causa
   async function handleSaveCause(e) {
     e.preventDefault();
     setIsSaving(true);
@@ -205,32 +206,92 @@ export default function HomePage() {
 
     try {
       const rowValues = currentTab.columns.map((col, idx) => {
-        return formValues[idx] || '';
+        return formValues[idx] !== undefined ? String(formValues[idx]) : '';
       });
 
-      const res = await fetch('/api/causas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tabTitle: currentTab.title,
-          rowValues,
-          targetYear: 2026,
-        }),
-      });
+      if (editingCause) {
+        // Actualizar causa existente
+        const res = await fetch('/api/causas', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tabTitle: currentTab.title,
+            rowIndex: currentTab.headerRow + 1 + editingCause.index,
+            expediente: editingCause.originalExp,
+            rowValues,
+          }),
+        });
 
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Error al guardar');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Error al actualizar');
+        setSaveSuccess('¡Causa actualizada con éxito en Google Sheets!');
+      } else {
+        // Crear nueva causa
+        const res = await fetch('/api/causas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tabTitle: currentTab.title,
+            rowValues,
+            targetYear: 2026,
+          }),
+        });
+
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Error al guardar');
+        setSaveSuccess(`¡Causa registrada con éxito en ${currentTab.title}!`);
       }
 
-      setSaveSuccess(`¡Causa registrada con éxito en ${currentTab.title}!`);
-      // Refrescar filas
       await fetchTabRows(currentTab.title);
       setTimeout(() => {
         setShowCreateModal(false);
+        setEditingCause(null);
         setFormValues({});
         setSaveSuccess('');
-      }, 1500);
+      }, 1200);
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleOpenEdit(row, index, exp) {
+    const init = {};
+    currentTab.columns.forEach((col, cIdx) => {
+      init[cIdx] = row[cIdx] || '';
+    });
+    setFormValues(init);
+    setEditingCause({ row, index, originalExp: exp });
+    setShowCreateModal(true);
+  }
+
+  // Eliminar causa físicamente
+  async function handleDeleteCause() {
+    if (!editingCause) return;
+    const expText = editingCause.originalExp ? `del expediente ${editingCause.originalExp}` : 'seleccionada';
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente de Google Sheets la causa ${expText}?`)) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const exp = encodeURIComponent(editingCause.originalExp || '');
+      const res = await fetch(`/api/causas?tab=${encodeURIComponent(currentTab.title)}&expediente=${exp}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Error al eliminar');
+
+      setSaveSuccess('¡Causa eliminada físicamente de Google Sheets!');
+      await fetchTabRows(currentTab.title);
+      setTimeout(() => {
+        setShowCreateModal(false);
+        setEditingCause(null);
+        setFormValues({});
+        setSaveSuccess('');
+      }, 1000);
     } catch (err) {
       setSaveError(err.message);
     } finally {
@@ -457,7 +518,8 @@ export default function HomePage() {
               return (
                 <div 
                   key={index}
-                  className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 hover:border-[#D4AF37] transition"
+                  onClick={() => handleOpenEdit(row, index, exp)}
+                  className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 hover:border-[#D4AF37] cursor-pointer hover:shadow-md transition group"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
@@ -469,15 +531,20 @@ export default function HomePage() {
                       </span>
                     </div>
 
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      estado.includes('ACTIV') 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : estado.includes('CERRAD') 
-                        ? 'bg-slate-100 text-slate-700 border border-slate-300' 
-                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}>
-                      {estado}
-                    </span>
+                    <div className="flex items-center space-x-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        estado.includes('ACTIV') 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : estado.includes('CERRAD') 
+                          ? 'bg-slate-100 text-slate-700 border border-slate-300' 
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}>
+                        {estado}
+                      </span>
+                      <span className="p-1 rounded-md text-slate-400 group-hover:text-[#6B1226] group-hover:bg-amber-50 transition">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="text-sm font-bold text-slate-900 leading-snug mb-1">
@@ -534,11 +601,16 @@ export default function HomePage() {
           <div className="bg-white w-full sm:max-w-xl max-h-[90vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             <div className="bg-[#6B1226] text-white px-4 py-3 border-b-2 border-[#D4AF37] flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-[#D4AF37]">NUEVA CAUSA JUDICIAL</h3>
+                <h3 className="text-sm font-bold text-[#D4AF37]">
+                  {editingCause ? `EDITAR EXPEDIENTE ${editingCause.originalExp || ''}` : 'NUEVA CAUSA JUDICIAL'}
+                </h3>
                 <p className="text-xs text-white/80 truncate max-w-[260px] sm:max-w-md">{currentTab.title}</p>
               </div>
               <button 
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setEditingCause(null);
+                }}
                 className="p-1 rounded-full text-white/80 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -607,10 +679,25 @@ export default function HomePage() {
                 );
               })}
 
-              <div className="pt-3 border-t border-slate-200 flex space-x-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center space-x-2">
+                {editingCause && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteCause}
+                    disabled={isSaving}
+                    title="Eliminar causa permanentemente de Google Sheets"
+                    className="bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-xs font-bold py-2.5 px-3 rounded-lg transition flex items-center space-x-1 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                    <span className="hidden sm:inline">Eliminar</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setEditingCause(null);
+                  }}
                   className="flex-1 bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg hover:bg-slate-300 transition"
                 >
                   Cancelar
@@ -626,7 +713,7 @@ export default function HomePage() {
                       <span>Sincronizando con Google Sheets...</span>
                     </>
                   ) : (
-                    <span>Guardar en Google Sheets</span>
+                    <span>{editingCause ? 'Guardar Cambios' : 'Guardar en Google Sheets'}</span>
                   )}
                 </button>
               </div>

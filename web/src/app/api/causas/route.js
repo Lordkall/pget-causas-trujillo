@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PGET_TABS } from '@/lib/tabsData';
-import { getRowsForTab, insertRowForTab, deleteRowForTab } from '@/lib/sheets';
+import { getRowsForTab, insertRowForTab, deleteRowForTab, updateRowForTab } from '@/lib/sheets';
 
 export async function GET(request) {
   try {
@@ -59,6 +59,48 @@ export async function POST(request) {
     console.error('Error inserting row:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Error al guardar causa en Google Sheets' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request) {
+  try {
+    const body = await request.json();
+    const { tabTitle, rowIndex, expediente, rowValues } = body;
+
+    if (!tabTitle || !rowValues || !Array.isArray(rowValues)) {
+      return NextResponse.json(
+        { success: false, error: 'Parámetros inválidos (tabTitle y rowValues requeridos)' },
+        { status: 400 }
+      );
+    }
+
+    const tab = PGET_TABS.find(t => t.title.toUpperCase() === tabTitle.toUpperCase());
+    if (!tab) {
+      return NextResponse.json(
+        { success: false, error: `Pestaña "${tabTitle}" no encontrada` },
+        { status: 404 }
+      );
+    }
+
+    const result = await updateRowForTab(tab, { rowIndex, expediente, rowValues });
+    if (!result.ok) {
+      return NextResponse.json(
+        { success: false, error: result.error || 'No se pudo actualizar la causa' },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Causa actualizada exitosamente en ${tab.title}`,
+      result,
+    });
+  } catch (error) {
+    console.error('Error updating row:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Error al actualizar causa en Google Sheets' },
       { status: 500 }
     );
   }
