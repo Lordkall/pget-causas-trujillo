@@ -1,9 +1,91 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:googleapis_auth/auth_io.dart';
 import 'package:gsheets/gsheets.dart';
+import 'package:http/http.dart' as http;
 import '../models/pget_tab.dart';
 import 'pget_credentials.dart';
+
+/// Cliente HTTP interceptor que sanitiza las respuestas de metadatos de Google Sheets.
+/// Evita que el paquete `gsheets` se caiga con `NoSuchMethodError: []("rowCount")`
+/// cuando el libro contiene hojas de tipo gráfico u objeto ('OBJECT') como 'Gráfico1'
+/// que carecen de la propiedad 'gridProperties'.
+class _GsheetsSanitizingClient extends http.BaseClient {
+  final http.Client _inner;
+  final String targetSpreadsheetId;
+
+  _GsheetsSanitizingClient(this._inner, this.targetSpreadsheetId);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request);
+    final path = request.url.path;
+
+    // Interceptar únicamente la solicitud de metadatos del documento (evitando lecturas/escrituras de celdas /values/)
+    if (request.method.toUpperCase() == 'GET' &&
+        path.contains(targetSpreadsheetId) &&
+        !path.contains('/values/')) {
+      final bytes = await response.stream.toBytes();
+      try {
+        final decoded = json.decode(utf8.decode(bytes));
+        if (decoded is Map<String, dynamic> && decoded.containsKey('sheets')) {
+          final sheets = decoded['sheets'] as List<dynamic>;
+          for (final s in sheets) {
+            if (s is Map<String, dynamic>) {
+              final props = s['properties'];
+              if (props is Map<String, dynamic>) {
+                if (props['gridProperties'] == null) {
+                  // Inyectar dimensiones mínimas para pestañas tipo OBJECT / gráficos
+                  // para evitar NoSuchMethodError en el deserializador de gsheets
+                  props['gridProperties'] = {
+                    'rowCount': 100,
+                    'columnCount': 26,
+                  };
+                }
+              }
+            }
+          }
+          final sanitizedBytes = utf8.encode(json.encode(decoded));
+          final sanitizedHeaders = Map<String, String>.from(response.headers);
+          sanitizedHeaders['content-length'] = sanitizedBytes.length.toString();
+
+          return http.StreamedResponse(
+            Stream.value(sanitizedBytes),
+            response.statusCode,
+            contentLength: sanitizedBytes.length,
+            request: response.request,
+            headers: sanitizedHeaders,
+            isRedirect: response.isRedirect,
+            persistentConnection: response.persistentConnection,
+            reasonPhrase: response.reasonPhrase,
+          );
+        }
+      } catch (e) {
+        debugPrint("Notice: sanitización de metadatos de hojas omitida: $e");
+      }
+
+      return http.StreamedResponse(
+        Stream.value(bytes),
+        response.statusCode,
+        contentLength: bytes.length,
+        request: response.request,
+        headers: response.headers,
+        isRedirect: response.isRedirect,
+        persistentConnection: response.persistentConnection,
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+
+    return response;
+  }
+
+  @override
+  void close() {
+    _inner.close();
+    super.close();
+  }
+}
 
 class GoogleSheetsService {
   static const String spreadsheetId = '1v2tCFT_JhXwjzX_hlRbR7PisfR4W-Y4IXQ0SgMrP9xg';
@@ -32,7 +114,19 @@ class GoogleSheetsService {
         creds = json.decode(utf8.decode(decodedBytes));
       }
 
-      _gsheets = GSheets(creds);
+      final accountCreds = ServiceAccountCredentials.fromJson(creds);
+      final scopes = const [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive',
+      ];
+      final sanitizingClient = _GsheetsSanitizingClient(http.Client(), spreadsheetId);
+      final authClient = await clientViaServiceAccount(
+        accountCreds,
+        scopes,
+        baseClient: sanitizingClient,
+      );
+
+      _gsheets = GSheets.withClient(authClient);
       _spreadsheet = await _gsheets!.spreadsheet(spreadsheetId);
 
       if (_spreadsheet == null) {
@@ -161,7 +255,7 @@ class GoogleSheetsService {
       final normTarget = _stripAccents(tab.title);
       return sheets.firstWhere(
         (s) => _stripAccents(s.title) == normTarget || s.id == tab.gid,
-        orElse: () => sheets.first,
+        orElse: () => sheets.firstWhere((s) => s.id != 2106549316, orElse: () => sheets.first),
       );
     } catch (e) {
       _lastError = "Error al localizar la pestaña ${tab.title}: $e";
@@ -266,11 +360,16 @@ class GoogleSheetsService {
 
       if (targetYearBannerRow != null) {
         // La sección del año YA existe. Se inserta después de la última fila de este año
-        final insertAt = (nextBannerRowAfterTarget != null)
-            ? nextBannerRowAfterTarget
-            : (lastMeaningfulRow + 1);
-        final ok = await ws.values.insertRow(insertAt, rowValues);
-        return ok;
+        if (nextBannerRowAfterTarget != null) {
+          final insertAt = nextBannerRowAfterTarget;
+          await ws.insertRow(insertAt);
+          final ok = await ws.values.insertRow(insertAt, rowValues);
+          return ok;
+        } else {
+          final insertAt = lastMeaningfulRow + 1;
+          final ok = await ws.values.insertRow(insertAt, rowValues);
+          return ok;
+        }
       } else {
         // La sección del año NO existe aún (ej. CAUSAS 2026):
         // 1. Insertar el banner de año
