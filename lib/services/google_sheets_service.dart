@@ -322,6 +322,8 @@ class GoogleSheetsService {
     }
 
     final targetYear = causeYear ?? _extractYearFromRow(rowValues) ?? DateTime.now().year;
+    final List<String> stringRowValues = rowValues.map((e) => e?.toString() ?? '').toList();
+    final effectiveSheetId = tab.gid > 0 ? tab.gid : ws.id;
 
     try {
       final allRows = await ws.values.allRows();
@@ -368,16 +370,16 @@ class GoogleSheetsService {
         if (nextBannerRowAfterTarget != null) {
           final insertAt = nextBannerRowAfterTarget;
           await ws.insertRow(insertAt);
-          final ok = await ws.values.insertRow(insertAt, rowValues);
+          final ok = await ws.values.insertRow(insertAt, stringRowValues);
           if (ok) {
-            _formatCauseRow(ws.id, insertAt, tab.columns.length);
+            _formatCauseRow(effectiveSheetId, insertAt, tab.columns.length);
           }
           return ok;
         } else {
           final insertAt = lastMeaningfulRow + 1;
-          final ok = await ws.values.insertRow(insertAt, rowValues);
+          final ok = await ws.values.insertRow(insertAt, stringRowValues);
           if (ok) {
-            _formatCauseRow(ws.id, insertAt, tab.columns.length);
+            _formatCauseRow(effectiveSheetId, insertAt, tab.columns.length);
           }
           return ok;
         }
@@ -389,12 +391,12 @@ class GoogleSheetsService {
         if (!bannerOk) {
           throw Exception("No se pudo crear la cabecera de $bannerText en Google Sheets.");
         }
-        _formatBanner(ws.id, bannerIndex, tab.columns.length);
+        _formatBanner(effectiveSheetId, bannerIndex, tab.columns.length);
 
         // 2. Insertar la nueva causa inmediatamente debajo del banner
-        final causeOk = await ws.values.insertRow(bannerIndex + 1, rowValues);
+        final causeOk = await ws.values.insertRow(bannerIndex + 1, stringRowValues);
         if (causeOk) {
-          _formatCauseRow(ws.id, bannerIndex + 1, tab.columns.length);
+          _formatCauseRow(effectiveSheetId, bannerIndex + 1, tab.columns.length);
         }
         return causeOk;
       }
@@ -412,9 +414,11 @@ class GoogleSheetsService {
     }
 
     try {
-      final ok = await ws.values.insertRow(rowIndex, rowValues);
+      final List<String> stringRowValues = rowValues.map((e) => e?.toString() ?? '').toList();
+      final effectiveSheetId = tab.gid > 0 ? tab.gid : ws.id;
+      final ok = await ws.values.insertRow(rowIndex, stringRowValues);
       if (ok) {
-        _formatCauseRow(ws.id, rowIndex, tab.columns.length);
+        _formatCauseRow(effectiveSheetId, rowIndex, tab.columns.length);
       }
       return ok;
     } catch (e) {
@@ -460,7 +464,7 @@ class GoogleSheetsService {
                   },
                   'textFormat': {
                     'fontFamily': 'Arial',
-                    'fontSize': 24,
+                    'fontSize': 36,
                     'bold': true,
                   },
                   'verticalAlignment': 'MIDDLE',
@@ -484,7 +488,7 @@ class GoogleSheetsService {
                 'startIndex': rowNumber - 1,
                 'endIndex': rowNumber,
               },
-              'properties': {'pixelSize': 55},
+              'properties': {'pixelSize': 60},
               'fields': 'pixelSize',
             }
           }

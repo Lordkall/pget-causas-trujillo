@@ -23,6 +23,9 @@ build_output/
 
 # Node / Scratch
 node_modules/
+web/node_modules/
+web/.next/
+web/out/
 check_lines.py
 
 # Secrets & Scratch
