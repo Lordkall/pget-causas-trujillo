@@ -84,6 +84,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           _enrolledEmail = bEmail;
           _enrolledUserName = bName;
         });
+
+        // Si la huella dactilar está enrolada, solicitarla inmediatamente al abrir la app
+        if (enrolled && bEmail != null && bEmail.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isLoading) {
+              _iniciarConBiometria();
+            }
+          });
+        }
       }
     } catch (e) {
       debugPrint('Error cargando preferencias de inicio de sesión: $e');

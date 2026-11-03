@@ -427,6 +427,44 @@ class GoogleSheetsService {
     }
   }
 
+  /// Elimina físicamente una fila de la pestaña en Google Sheets por expediente o índice
+  Future<bool> deleteRowForTab(PgetTab tab, {int? rowIndex, String? expediente}) async {
+    final ws = await getWorksheet(tab);
+    if (ws == null) {
+      throw Exception("No se pudo conectar a Google Sheets: ${_lastError ?? 'compruebe su conexión a internet'}");
+    }
+
+    try {
+      int? targetRow;
+
+      // 1. Buscar la fila exacta por el número de expediente (método más preciso)
+      if (expediente != null && expediente.trim().isNotEmpty) {
+        final allRows = await ws.values.allRows();
+        final expQuery = expediente.trim().toUpperCase();
+        for (int i = 0; i < allRows.length; i++) {
+          final line = allRows[i].map((c) => c.toString().toUpperCase()).join(' ');
+          if (line.contains(expQuery)) {
+            targetRow = i + 1; // 1-based index
+            break;
+          }
+        }
+      }
+
+      // 2. Si no se encontró por expediente pero tenemos rowIndex
+      targetRow ??= rowIndex;
+
+      if (targetRow != null && targetRow > tab.headerRow) {
+        final ok = await ws.deleteRow(targetRow);
+        return ok;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint("Error deleting row in ${tab.title}: $e");
+      rethrow;
+    }
+  }
+
   /// Aplica el diseño institucional idéntico a las cabeceras anuales existentes (fondo celeste #92CDE0, 24pt, negrita, centrado vertical, fila fusionada)
   Future<void> _formatBanner(int sheetId, int rowNumber, int columnCount) async {
     if (_authClient == null) return;

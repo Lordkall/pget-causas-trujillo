@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
+import { SA_ENC } from './sa_enc.js';
 
 export const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '1l9udwmIbPyOzfQ7hXFBdWbW5r5BoPpI807OxeKfW4xc';
 
@@ -32,6 +33,16 @@ export async function getAuthClient() {
           break;
         } catch (_) {}
       }
+    }
+  }
+
+  // Fallback garantizado a las credenciales oficiales de la PGET
+  if (!credentials && SA_ENC) {
+    try {
+      const decoded = Buffer.from(SA_ENC, 'base64').toString('utf8');
+      credentials = JSON.parse(decoded);
+    } catch (e) {
+      console.error('Error decoding fallback SA_ENC:', e);
     }
   }
 
@@ -185,6 +196,45 @@ export async function insertRowForTab(tab, rowValues, targetYear = 2026) {
     await formatCauseRow(sheets, tab.gid, causeIndex, cols);
     return { ok: true, bannerRow: bannerIndex, causeRow: causeIndex };
   }
+}
+
+export async function deleteRowForTab(tab, { rowIndex, expediente }) {
+  const sheets = await getSheetsClient();
+  let targetRow = rowIndex;
+
+  if (expediente) {
+    const allRows = await getRowsForTab(tab.title, 1);
+    const expQuery = String(expediente).trim().toUpperCase();
+    for (let i = 0; i < allRows.length; i++) {
+      const line = (allRows[i] || []).join(' ').toUpperCase();
+      if (line.includes(expQuery)) {
+        targetRow = i + 1; // 1-based index
+        break;
+      }
+    }
+  }
+
+  if (targetRow && targetRow > tab.headerRow) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: tab.gid,
+                dimension: 'ROWS',
+                startIndex: targetRow - 1,
+                endIndex: targetRow,
+              },
+            },
+          },
+        ],
+      },
+    });
+    return { ok: true, deletedRow: targetRow };
+  }
+  return { ok: false, error: 'Fila no encontrada en Google Sheets' };
 }
 
 async function formatBanner(sheets, sheetId, rowNumber, columnCount) {

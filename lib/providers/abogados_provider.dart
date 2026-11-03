@@ -510,11 +510,13 @@ class AbogadosProvider with ChangeNotifier {
 
     try {
       final realIndex = (causa.rowIndex ?? 1) - 1;
-      final sheetRowNumber = _currentTab.headerRow + 1 + realIndex;
 
-      // Limpiar fila en Google Sheets
-      final filaVacia = List.filled(_currentTab.columns.length, '');
-      await _sheetsService.updateRowForTab(_currentTab, sheetRowNumber, filaVacia);
+      // Eliminar físicamente en Google Sheets buscando por número de expediente o índice
+      await _sheetsService.deleteRowForTab(
+        _currentTab,
+        rowIndex: causa.rowIndex != null ? (_currentTab.headerRow + causa.rowIndex!) : null,
+        expediente: causa.numeroExpediente,
+      );
 
       if (realIndex >= 0 && realIndex < _currentTabRows.length) {
         _currentTabRows.removeAt(realIndex);
@@ -527,7 +529,7 @@ class AbogadosProvider with ChangeNotifier {
         accion: 'ELIMINACIÓN DE CAUSA',
         expediente: causa.numeroExpediente,
         pestana: _currentTab.title,
-        detalle: 'Se eliminó la causa judicial por decisión de $usuario.',
+        detalle: 'Se eliminó la causa judicial físicamente de Google Sheets por decisión de $usuario.',
         usuario: usuario,
       );
 
@@ -694,6 +696,15 @@ class AbogadosProvider with ChangeNotifier {
   Future<bool> verificarSesionGuardada() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final isBiometricsEnrolled = prefs.getBool('pget_biometrics_enrolled') ?? false;
+
+      // Si la huella está enrolada, NUNCA entrar directo sin autenticar;
+      // dejar que la pantalla de Login solicite el sensor de huella de inmediato.
+      if (isBiometricsEnrolled) {
+        _usuarioAutenticado = null;
+        return false;
+      }
+
       final savedEmail = prefs.getString('pget_active_session_email');
       if (savedEmail != null && savedEmail.isNotEmpty) {
         final a = buscarAbogadoPorCorreo(savedEmail);

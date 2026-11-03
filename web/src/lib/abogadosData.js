@@ -14,3 +14,4 @@ export const ABOGADOS_PGET = [
   { id: '13', nombre: 'VALE VALERA YULIANOVA PAOLA', cedula: '26.591.763', cargo: 'ABOGADO I', adscrito: 'PROCURADURÍA GENERAL', activo: true, correo: 'paolavale@pget.com', clave: 'Pget2026*Paola', rol: 'abogado', telefono: '+58 424 4433556' },
   { id: '14', nombre: 'ADMINISTRADOR GENERAL PGET', cedula: '12.345.678', cargo: 'Director General', adscrito: 'PROCURADURÍA GENERAL', activo: true, correo: 'admin@pget.gob.ve', clave: 'Admin2026*Pget', rol: 'admin', telefono: '+58 414 0000000' }
 ];
+

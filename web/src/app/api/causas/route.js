@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PGET_TABS } from '@/lib/tabsData';
-import { getRowsForTab, insertRowForTab } from '@/lib/sheets';
+import { getRowsForTab, insertRowForTab, deleteRowForTab } from '@/lib/sheets';
 
 export async function GET(request) {
   try {
@@ -63,3 +63,42 @@ export async function POST(request) {
     );
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tabTitle = searchParams.get('tab') || 'JUZGADOS DE MUNICIPIOS ORDINARI';
+    const expediente = searchParams.get('expediente');
+    const rowIndexParam = searchParams.get('rowIndex');
+    const rowIndex = rowIndexParam ? parseInt(rowIndexParam, 10) : null;
+
+    const tab = PGET_TABS.find(t => t.title.toUpperCase() === tabTitle.toUpperCase());
+    if (!tab) {
+      return NextResponse.json(
+        { success: false, error: `Pestaña "${tabTitle}" no encontrada` },
+        { status: 404 }
+      );
+    }
+
+    const result = await deleteRowForTab(tab, { rowIndex, expediente });
+    if (!result.ok) {
+      return NextResponse.json(
+        { success: false, error: result.error || 'No se pudo eliminar la causa' },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Causa eliminada físicamente de Google Sheets',
+      result,
+    });
+  } catch (error) {
+    console.error('Error deleting row:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Error al eliminar causa en Google Sheets' },
+      { status: 500 }
+    );
+  }
+}
+
