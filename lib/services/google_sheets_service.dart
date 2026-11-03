@@ -92,6 +92,7 @@ class GoogleSheetsService {
 
   GSheets? _gsheets;
   Spreadsheet? _spreadsheet;
+  AutoRefreshingAuthClient? _authClient;
   bool _isInitialized = false;
   Map<String, dynamic>? _cachedRowsMap;
   String? _lastError;
@@ -126,6 +127,7 @@ class GoogleSheetsService {
         baseClient: sanitizingClient,
       );
 
+      _authClient = authClient;
       _gsheets = GSheets.withClient(authClient);
       _spreadsheet = await _gsheets!.spreadsheet(spreadsheetId);
 
@@ -367,10 +369,16 @@ class GoogleSheetsService {
           final insertAt = nextBannerRowAfterTarget;
           await ws.insertRow(insertAt);
           final ok = await ws.values.insertRow(insertAt, rowValues);
+          if (ok) {
+            _formatCauseRow(ws.id, insertAt, tab.columns.length);
+          }
           return ok;
         } else {
           final insertAt = lastMeaningfulRow + 1;
           final ok = await ws.values.insertRow(insertAt, rowValues);
+          if (ok) {
+            _formatCauseRow(ws.id, insertAt, tab.columns.length);
+          }
           return ok;
         }
       } else {
@@ -381,8 +389,13 @@ class GoogleSheetsService {
         if (!bannerOk) {
           throw Exception("No se pudo crear la cabecera de $bannerText en Google Sheets.");
         }
+        _formatBanner(ws.id, bannerIndex, tab.columns.length);
+
         // 2. Insertar la nueva causa inmediatamente debajo del banner
         final causeOk = await ws.values.insertRow(bannerIndex + 1, rowValues);
+        if (causeOk) {
+          _formatCauseRow(ws.id, bannerIndex + 1, tab.columns.length);
+        }
         return causeOk;
       }
     } catch (e) {
@@ -399,10 +412,151 @@ class GoogleSheetsService {
     }
 
     try {
-      return await ws.values.insertRow(rowIndex, rowValues);
+      final ok = await ws.values.insertRow(rowIndex, rowValues);
+      if (ok) {
+        _formatCauseRow(ws.id, rowIndex, tab.columns.length);
+      }
+      return ok;
     } catch (e) {
       debugPrint("Error updating row in ${tab.title}: $e");
       rethrow;
+    }
+  }
+
+  /// Aplica el diseño institucional idéntico a las cabeceras anuales existentes (fondo celeste #92CDE0, 24pt, negrita, centrado vertical, fila fusionada)
+  Future<void> _formatBanner(int sheetId, int rowNumber, int columnCount) async {
+    if (_authClient == null) return;
+    try {
+      final cols = columnCount > 0 ? columnCount : 20;
+      final body = {
+        'requests': [
+          {
+            'mergeCells': {
+              'range': {
+                'sheetId': sheetId,
+                'startRowIndex': rowNumber - 1,
+                'endRowIndex': rowNumber,
+                'startColumnIndex': 0,
+                'endColumnIndex': cols,
+              },
+              'mergeType': 'MERGE_ALL',
+            }
+          },
+          {
+            'repeatCell': {
+              'range': {
+                'sheetId': sheetId,
+                'startRowIndex': rowNumber - 1,
+                'endRowIndex': rowNumber,
+                'startColumnIndex': 0,
+                'endColumnIndex': cols,
+              },
+              'cell': {
+                'userEnteredFormat': {
+                  'backgroundColor': {
+                    'red': 0.5725,
+                    'green': 0.8039,
+                    'blue': 0.8627,
+                  },
+                  'textFormat': {
+                    'fontFamily': 'Arial',
+                    'fontSize': 24,
+                    'bold': true,
+                  },
+                  'verticalAlignment': 'MIDDLE',
+                  'horizontalAlignment': 'LEFT',
+                  'borders': {
+                    'top': {'style': 'SOLID'},
+                    'bottom': {'style': 'SOLID'},
+                    'left': {'style': 'SOLID'},
+                    'right': {'style': 'SOLID'},
+                  },
+                }
+              },
+              'fields': 'userEnteredFormat(backgroundColor,textFormat,verticalAlignment,horizontalAlignment,borders)',
+            }
+          },
+          {
+            'updateDimensionProperties': {
+              'range': {
+                'sheetId': sheetId,
+                'dimension': 'ROWS',
+                'startIndex': rowNumber - 1,
+                'endIndex': rowNumber,
+              },
+              'properties': {'pixelSize': 55},
+              'fields': 'pixelSize',
+            }
+          }
+        ]
+      };
+      await _authClient!.post(
+        Uri.parse('https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId:batchUpdate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+    } catch (e) {
+      debugPrint("Notice: could not format banner in Google Sheets: $e");
+    }
+  }
+
+  /// Aplica el diseño centrado horizontal y verticalmente a las celdas de una causa nueva o modificada
+  Future<void> _formatCauseRow(int sheetId, int rowNumber, int columnCount) async {
+    if (_authClient == null) return;
+    try {
+      final cols = columnCount > 0 ? columnCount : 20;
+      final body = {
+        'requests': [
+          {
+            'repeatCell': {
+              'range': {
+                'sheetId': sheetId,
+                'startRowIndex': rowNumber - 1,
+                'endRowIndex': rowNumber,
+                'startColumnIndex': 0,
+                'endColumnIndex': cols,
+              },
+              'cell': {
+                'userEnteredFormat': {
+                  'verticalAlignment': 'MIDDLE',
+                  'horizontalAlignment': 'CENTER',
+                  'wrapStrategy': 'WRAP',
+                  'textFormat': {
+                    'fontFamily': 'Arial',
+                    'fontSize': 10,
+                  },
+                  'borders': {
+                    'top': {'style': 'SOLID'},
+                    'bottom': {'style': 'SOLID'},
+                    'left': {'style': 'SOLID'},
+                    'right': {'style': 'SOLID'},
+                  },
+                }
+              },
+              'fields': 'userEnteredFormat(verticalAlignment,horizontalAlignment,wrapStrategy,textFormat,borders)',
+            }
+          },
+          {
+            'updateDimensionProperties': {
+              'range': {
+                'sheetId': sheetId,
+                'dimension': 'ROWS',
+                'startIndex': rowNumber - 1,
+                'endIndex': rowNumber,
+              },
+              'properties': {'pixelSize': 40},
+              'fields': 'pixelSize',
+            }
+          }
+        ]
+      };
+      await _authClient!.post(
+        Uri.parse('https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId:batchUpdate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+    } catch (e) {
+      debugPrint("Notice: could not format cause row in Google Sheets: $e");
     }
   }
 }
