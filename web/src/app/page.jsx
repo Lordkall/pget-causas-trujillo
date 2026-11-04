@@ -194,8 +194,18 @@ export default function HomePage() {
       return (matchCedula || matchCorreo || matchNombre);
     });
 
-    if (!user || user.clave !== cleanPass) {
-      setLoginError('Cédula/correo o contraseña incorrectos. Verifique sus datos.');
+    if (!user) {
+      setLoginError('Cédula o correo no registrado.');
+      return;
+    }
+
+    // Permitir clave oficial y alias intuitivos (ej: Maria Barrios acepta tanto Pget2026*Maria como Pget2026*MariaB)
+    const isPassValid = (user.clave === cleanPass) ||
+      (user.correo === 'mariabarrios@pget.com' && (cleanPass === 'Pget2026*Maria' || cleanPass === 'Pget2026*MariaB')) ||
+      (user.correo === 'mariaojeda@pget.com' && (cleanPass === 'Pget2026*MariaO' || cleanPass === 'Pget2026*Maria'));
+
+    if (!isPassValid) {
+      setLoginError('Contraseña incorrecta. Verifique sus datos.');
       return;
     }
 
