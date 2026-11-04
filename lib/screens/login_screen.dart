@@ -89,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         if (enrolled && bEmail != null && bEmail.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_isLoading) {
-              _iniciarConBiometria();
+              _ingresoConHuella();
             }
           });
         }
