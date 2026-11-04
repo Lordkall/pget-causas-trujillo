@@ -7,14 +7,17 @@ import { ABOGADOS_PGET } from '@/lib/abogadosData';
 import { 
   Search, Plus, ShieldCheck, Scale, Calendar, Users, 
   FolderCheck, FolderClock, LogOut, Share, X, CheckCircle, 
-  AlertCircle, ChevronDown, RefreshCw, Trash2, Edit3
+  AlertCircle, ChevronDown, RefreshCw, Trash2, Edit3,
+  Lock, Eye, EyeOff
 } from 'lucide-react';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loginError, setLoginError] = useState('');
 
   const [currentTab, setCurrentTab] = useState(PGET_TABS[0]);
@@ -44,23 +47,24 @@ export default function HomePage() {
     }
 
     // Cargar sesión previa si existe
-    const saved = localStorage.getItem('pget_user');
-    if (saved) {
-      try {
-        setCurrentUser(JSON.parse(saved));
-      } catch (_) {}
-    } else {
-      // Default como Abogado oficial para navegación directa
-      const def = ABOGADOS_PGET[0];
-      setCurrentUser(def);
-      localStorage.setItem('pget_user', JSON.stringify(def));
-    }
+    try {
+      const saved = localStorage.getItem('pget_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.cedula || parsed.correo)) {
+          setCurrentUser(parsed);
+        }
+      }
+    } catch (_) {}
+    setAuthChecked(true);
   }, []);
 
-  // Cargar filas cuando cambia la pestaña
+  // Cargar filas únicamente cuando el usuario esté autenticado
   useEffect(() => {
-    fetchTabRows(currentTab.title);
-  }, [currentTab]);
+    if (currentUser) {
+      fetchTabRows(currentTab.title);
+    }
+  }, [currentTab, currentUser]);
 
   async function fetchTabRows(tabTitle) {
     setLoading(true);
@@ -170,31 +174,46 @@ export default function HomePage() {
   function handleLogin(e) {
     e.preventDefault();
     setLoginError('');
-    const cleanId = loginId.trim().toUpperCase().replace(/[.\s-]/g, '');
+    const rawInput = loginId.trim();
+    if (!rawInput) {
+      setLoginError('Por favor ingrese su Cédula o Correo');
+      return;
+    }
+    if (!loginPass.trim()) {
+      setLoginError('Por favor ingrese su Contraseña');
+      return;
+    }
+
+    const cleanId = rawInput.toUpperCase().replace(/^V-?/, '').replace(/[.\s-]/g, '');
     const cleanPass = loginPass.trim();
 
     const user = ABOGADOS_PGET.find(a => {
       const matchCedula = a.cedula.replace(/[.\s-]/g, '').toUpperCase() === cleanId;
-      const matchCorreo = a.correo.toUpperCase() === cleanId;
+      const matchCorreo = a.correo.trim().toUpperCase() === rawInput.toUpperCase();
       const matchNombre = a.nombre.toUpperCase().includes(cleanId);
       return (matchCedula || matchCorreo || matchNombre);
     });
 
     if (!user || user.clave !== cleanPass) {
-      setLoginError('Credenciales incorrectas');
+      setLoginError('Cédula/correo o contraseña incorrectos. Verifique sus datos.');
       return;
     }
 
     setCurrentUser(user);
-    localStorage.setItem('pget_user', JSON.stringify(user));
-    setShowLoginModal(false);
+    if (rememberMe) {
+      localStorage.setItem('pget_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('pget_user');
+    }
     setLoginPass('');
+    setLoginError('');
   }
 
   function handleLogout() {
     localStorage.removeItem('pget_user');
     setCurrentUser(null);
-    setShowLoginModal(true);
+    setLoginPass('');
+    setLoginError('');
   }
 
   // Guardar o Actualizar causa
@@ -299,6 +318,172 @@ export default function HomePage() {
     }
   }
 
+  // 1. Pantalla de carga mientras se verifica el estado de sesión local
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#4A0C1A] via-[#6B1226] to-[#2B0710] flex flex-col items-center justify-center p-4 text-white">
+        <div className="relative mb-4">
+          <div className="w-20 h-20 rounded-full border-2 border-[#D4AF37] p-2 bg-white/10 backdrop-blur shadow-2xl flex items-center justify-center animate-pulse">
+            <img src="/logo.png" alt="Escudo PGET" className="w-16 h-16 object-contain drop-shadow" />
+          </div>
+        </div>
+        <div className="text-center">
+          <h2 className="text-sm font-bold tracking-widest text-[#D4AF37] uppercase">
+            Procuraduría General del Estado Trujillo
+          </h2>
+          <p className="text-xs text-white/70 mt-1">Verificando acceso institucional...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Pantalla de LOGIN OBLIGATORIO (si no hay sesión activa)
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#3D0A15] via-[#6B1226] to-[#26050C] flex flex-col justify-between p-4 sm:p-6 text-white selection:bg-[#D4AF37] selection:text-[#6B1226]">
+        {/* Banner instalación iPhone si aplica */}
+        {showIosPrompt && (
+          <div className="max-w-md mx-auto w-full mb-3 bg-amber-400 text-amber-950 px-3.5 py-2 rounded-xl text-xs flex items-center justify-between shadow-lg">
+            <div className="flex items-center space-x-2">
+              <Share className="w-4 h-4 flex-shrink-0" />
+              <span>
+                <strong>iPhone:</strong> Toca Compartir y luego <strong>"Agregar al inicio"</strong>.
+              </span>
+            </div>
+            <button onClick={() => setShowIosPrompt(false)} className="p-1 hover:opacity-70">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 flex items-center justify-center py-6">
+          <div className="w-full max-w-md bg-white text-slate-900 rounded-3xl shadow-2xl border border-[#D4AF37]/40 overflow-hidden">
+            {/* Cabecera de la tarjeta con estilo Vinotinto Institucional */}
+            <div className="bg-gradient-to-b from-[#6B1226] to-[#4A0C1A] text-white px-6 pt-7 pb-6 text-center border-b-2 border-[#D4AF37] relative">
+              <div className="w-20 h-20 rounded-full border-2 border-[#D4AF37] mx-auto mb-3 bg-white/10 p-2 shadow-lg flex items-center justify-center">
+                <img src="/logo.png" alt="Escudo PGET" className="w-16 h-16 object-contain drop-shadow" />
+              </div>
+              <p className="text-[10px] tracking-widest uppercase font-semibold text-[#D4AF37]/90 mb-0.5">
+                República Bolivariana de Venezuela
+              </p>
+              <h1 className="text-base font-extrabold tracking-wide text-white leading-tight">
+                PROCURADURÍA GENERAL
+              </h1>
+              <p className="text-xs font-semibold text-[#D4AF37] tracking-wider uppercase">
+                Estado Trujillo
+              </p>
+              <div className="mt-2 inline-block bg-[#2E0710]/80 border border-[#D4AF37]/40 text-[#F4D068] text-[11px] font-medium px-3 py-0.5 rounded-full">
+                Control de Causas Judiciales
+              </div>
+            </div>
+
+            {/* Formulario de Login */}
+            <div className="p-6 sm:p-7">
+              <div className="mb-5 text-center">
+                <h2 className="text-base font-bold text-[#6B1226]">Acceso de Abogados</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ingrese sus credenciales oficiales para gestionar expedientes
+                </p>
+              </div>
+
+              {loginError && (
+                <div className="mb-4 bg-red-50 border border-red-200 text-red-800 p-3 rounded-xl text-xs font-medium flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Cédula o Correo Institucional
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={loginId}
+                      onChange={(e) => setLoginId(e.target.value)}
+                      placeholder="Ej: 14.459.865 o juliobarrios@pget.com"
+                      autoComplete="username"
+                      required
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6B1226] focus:border-[#6B1226] transition font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Contraseña
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={loginPass}
+                      onChange={(e) => setLoginPass(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      required
+                      className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6B1226] focus:border-[#6B1226] transition font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <label className="flex items-center space-x-2 text-slate-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded text-[#6B1226] focus:ring-[#6B1226] border-slate-300 cursor-pointer"
+                    />
+                    <span>Recordar sesión</span>
+                  </label>
+                  <span className="text-[11px] text-slate-400">
+                    PGET v2.0
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full mt-2 bg-gradient-to-r from-[#6B1226] to-[#8B1832] hover:from-[#540D1E] hover:to-[#6B1226] text-white text-xs font-bold py-3 rounded-xl shadow-lg shadow-[#6B1226]/30 border border-[#D4AF37]/50 hover:border-[#D4AF37] transition flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
+                  <span>INGRESAR AL SISTEMA</span>
+                </button>
+              </form>
+
+              <div className="mt-6 pt-4 border-t border-slate-100 text-center">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  🔒 Acceso exclusivo para el personal letrado adscrito a la Procuraduría General del Estado Trujillo.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer institucional */}
+        <div className="text-center text-[11px] text-white/60 py-2">
+          © {new Date().getFullYear()} Procuraduría General del Estado Trujillo • Plataforma Oficial de Control Judicial
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Panel Principal de Causas (Únicamente accesible tras autenticación exitosa)
   return (
     <div className="min-h-screen pb-24 bg-[#F8F9FA]">
       {/* HEADER INSTITUCIONAL */}
@@ -319,27 +504,19 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center space-x-2">
-            {currentUser ? (
-              <div className="flex items-center space-x-2">
-                <span className="text-xs bg-[#4A0C1A] text-[#D4AF37] font-semibold px-2.5 py-1 rounded-full border border-[#D4AF37]/50 max-w-[120px] truncate sm:max-w-none">
-                  {currentUser.nombre.split(' ')[0]} {currentUser.rol === 'admin' ? '(ADMIN)' : ''}
-                </span>
-                <button 
-                  onClick={handleLogout}
-                  title="Cerrar sesión"
-                  className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowLoginModal(true)}
-                className="text-xs bg-[#D4AF37] text-[#6B1226] font-bold px-3 py-1.5 rounded-lg hover:bg-[#F4D068] transition"
+            <div className="flex items-center space-x-2">
+              <span className="text-xs bg-[#4A0C1A] text-[#D4AF37] font-semibold px-2.5 py-1 rounded-full border border-[#D4AF37]/50 max-w-[140px] truncate sm:max-w-none">
+                {currentUser.nombre.split(' ')[0]} {currentUser.rol === 'admin' ? '(ADMIN)' : ''}
+              </span>
+              <button 
+                onClick={handleLogout}
+                title="Cerrar sesión"
+                className="flex items-center space-x-1 text-xs bg-black/20 hover:bg-black/40 text-white/90 px-2.5 py-1 rounded-lg border border-white/10 transition"
               >
-                Ingresar
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Cerrar Sesión</span>
               </button>
-            )}
+            </div>
           </div>
         </div>
 
@@ -717,60 +894,6 @@ export default function HomePage() {
                   )}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL INICIAR SESIÓN */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 border border-slate-200">
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full border-2 border-[#D4AF37] mx-auto mb-2 overflow-hidden bg-[#6B1226] p-1 flex items-center justify-center">
-                <img src="/logo.png" alt="PGET" className="w-full h-full object-contain" />
-              </div>
-              <h3 className="text-base font-bold text-[#6B1226]">Acceso de Abogados</h3>
-              <p className="text-xs text-slate-500">Procuraduría General del Estado Trujillo</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-3">
-              {loginError && (
-                <div className="bg-rose-50 text-rose-700 border border-rose-200 p-2.5 rounded-lg text-xs font-semibold">
-                  {loginError}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Cédula o Correo:</label>
-                <input
-                  type="text"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                  placeholder="Ej: 14.459.865 o juliobarrios@pget.com"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6B1226]"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Contraseña:</label>
-                <input
-                  type="password"
-                  value={loginPass}
-                  onChange={(e) => setLoginPass(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6B1226]"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-[#6B1226] text-white text-xs font-bold py-2.5 rounded-lg hover:bg-[#8B1832] transition"
-              >
-                Iniciar Sesión
-              </button>
             </form>
           </div>
         </div>
