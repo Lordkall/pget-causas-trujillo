@@ -328,6 +328,31 @@ export default function HomePage() {
     }
   }
 
+  // Eliminar causa directamente desde la tarjeta principal
+  async function handleDirectDelete(row, index, exp) {
+    const expText = exp ? `con Expediente "${exp}"` : `de la fila #${index + 1}`;
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente de Google Sheets la causa ${expText}?\n\nEsta acción eliminará la fila directamente en la hoja de cálculo.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const expParam = encodeURIComponent(exp || '');
+      const res = await fetch(`/api/causas?tab=${encodeURIComponent(currentTab.title)}&expediente=${expParam}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Error al eliminar');
+
+      await fetchTabRows(currentTab.title);
+      alert(`¡Causa ${expText} eliminada exitosamente de Google Sheets!`);
+    } catch (err) {
+      alert(`Error al eliminar: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // 1. Pantalla de carga mientras se verifica el estado de sesión local
   if (!authChecked) {
     return (
@@ -744,12 +769,35 @@ export default function HomePage() {
                     </p>
                   )}
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <div className="flex items-center space-x-1 truncate max-w-[220px]">
-                      <Users className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 gap-2">
+                    <div className="flex items-center space-x-1 truncate max-w-[180px] sm:max-w-[260px]">
+                      <Users className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
                       <span className="truncate">{abg}</span>
                     </div>
-                    <span className="text-[11px] text-slate-400">Fila {index + 1}</span>
+                    <div className="flex items-center space-x-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(row, index, exp);
+                        }}
+                        className="text-[11px] font-bold text-[#6B1226] bg-[#6B1226]/5 hover:bg-[#6B1226]/15 px-2.5 py-1 rounded-lg border border-[#6B1226]/20 flex items-center space-x-1 transition"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDirectDelete(row, index, exp);
+                        }}
+                        className="text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg border border-red-200 hover:border-red-600 flex items-center space-x-1 transition shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Eliminar</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -866,43 +914,45 @@ export default function HomePage() {
                 );
               })}
 
-              <div className="pt-3 border-t border-slate-200 flex items-center space-x-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
                 {editingCause && (
                   <button
                     type="button"
                     onClick={handleDeleteCause}
                     disabled={isSaving}
                     title="Eliminar causa permanentemente de Google Sheets"
-                    className="bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-xs font-bold py-2.5 px-3 rounded-lg transition flex items-center space-x-1 disabled:opacity-50"
+                    className="bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 hover:border-red-600 text-xs font-bold py-2.5 px-3.5 rounded-lg transition flex items-center space-x-1.5 disabled:opacity-50 flex-shrink-0"
                   >
-                    <Trash2 className="w-4 h-4 text-red-600" />
-                    <span className="hidden sm:inline">Eliminar</span>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setEditingCause(null);
-                  }}
-                  className="flex-1 bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg hover:bg-slate-300 transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 bg-[#6B1226] text-white text-xs font-bold py-2.5 rounded-lg hover:bg-[#8B1832] transition disabled:opacity-50 flex items-center justify-center space-x-1"
-                >
-                  {isSaving ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sincronizando con Google Sheets...</span>
-                    </>
-                  ) : (
-                    <span>{editingCause ? 'Guardar Cambios' : 'Guardar en Google Sheets'}</span>
-                  )}
-                </button>
+                <div className="flex items-center space-x-2 flex-1 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingCause(null);
+                    }}
+                    className="bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-lg hover:bg-slate-300 transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="flex-1 max-w-[220px] bg-[#6B1226] text-white text-xs font-bold py-2.5 px-4 rounded-lg hover:bg-[#8B1832] transition disabled:opacity-50 flex items-center justify-center space-x-1"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <span>{editingCause ? 'Guardar Cambios' : 'Guardar en Sheets'}</span>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
